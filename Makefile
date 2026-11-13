@@ -1,10 +1,13 @@
-.PHONY: setup smoke test lint ci pilot collect stats prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
+.PHONY: setup smoke quick test lint ci pilot collect stats prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
 
 setup:
 	pip install -e ".[dev]"
 
 smoke:
 	bash scripts/smoke_test.sh
+
+quick:
+	codeplan-pretrain --config configs/quick_test.json
 
 test:
 	pytest -q

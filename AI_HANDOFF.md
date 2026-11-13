@@ -132,6 +132,13 @@ Benchmark task JSONL:
 - The benchmark executes model output as your user. Use a container for real evals.
 - The model is small and will hallucinate. Do not deploy for high-stakes use.
 
+## Working agreement (user instruction, 2026-11-13)
+
+- After every merge, also run `cd` into the repository and `git pull` so the local
+  checkout on `main` is up to date.
+- The user keeps the working copy at `~/Desktop/Cai` on native Ubuntu
+  (`git clone https://github.com/jonas050210/Cai.git ~/Desktop/Cai`, then `make setup`).
+
 ## Good next tasks
 
 1. Collect ~800M tokens (curated repo lists beat star-ranked search) and audit the
