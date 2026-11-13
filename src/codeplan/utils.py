@@ -38,6 +38,13 @@ def precision_dtype(device: torch.device, precision: str) -> torch.dtype | None:
     raise ValueError(f"Unknown precision: {precision}")
 
 
+def _rng_state(state: Any) -> torch.Tensor:
+    """Normalise a stored RNG state to a CPU uint8 tensor."""
+    if isinstance(state, torch.Tensor):
+        return state.detach().to("cpu", dtype=torch.uint8)
+    return torch.as_tensor(state, dtype=torch.uint8)
+
+
 def save_checkpoint(
     path: str | Path,
     model: torch.nn.Module,
@@ -93,9 +100,12 @@ def load_checkpoint(
         rng = payload["rng"]
         random.setstate(rng["python"])
         np.random.set_state(rng["numpy"])
-        torch.set_rng_state(rng["torch"])
-        if torch.cuda.is_available() and rng.get("cuda") is not None:
-            torch.cuda.set_rng_state_all(rng["cuda"])
+        # map_location moved every tensor to `device`, including the RNG state.
+        # torch.set_rng_state only accepts a CPU ByteTensor, so move it back.
+        torch.set_rng_state(_rng_state(rng.get("torch")))
+        cuda_states = rng.get("cuda")
+        if cuda_states is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all([_rng_state(state) for state in cuda_states])
     return payload
 
 
