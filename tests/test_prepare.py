@@ -97,3 +97,40 @@ def test_script_check_matches_unicode_names():
     assert not is_disallowed_char("ä")
     assert not is_disallowed_char("A")
     assert not is_disallowed_char("€")
+
+
+def test_syntax_gate_drops_broken_python(tmp_path):
+    good = {"text": "def f(x):\n    return x + 1\n" * 3, "lang": "en", "domain": "code",
+            "license": "mit", "source": "github:a/b/good.py"}
+    broken = {"text": "def f(x:\n    return (x\n" * 3, "lang": "en", "domain": "code",
+              "license": "mit", "source": "github:a/b/broken.py"}
+    doc = {"text": "# Notiz\n\n" * 20, "lang": "de", "domain": "planning",
+           "license": "mit", "source": "github:a/b/NOTES.md"}
+    path = tmp_path / "in.jsonl"
+    write_jsonl(path, [good, broken, doc])
+
+    stats = prepare(path, tmp_path / "out", require_license=True, syntax_check=True,
+                    min_chars=20, val_ratio=0.0, test_ratio=0.0)
+    assert stats["syntax_error"] == 1
+    kept = (tmp_path / "out" / "train.jsonl").read_text()
+    assert "good.py" in kept
+    assert "broken.py" not in kept
+    assert "NOTES.md" in kept  # unknown language: passes through
+
+
+def test_bracket_balance_check():
+    from codeplan.prepare import syntax_ok
+
+    assert syntax_ok("function f() { return 1; }", "javascript")
+    assert syntax_ok("const s = 'a)b';", "javascript")
+    assert not syntax_ok("function f() { return 1;", "javascript")
+    assert not syntax_ok("let x = (1];", "typescript")
+    assert syntax_ok("anything", None)
+
+
+def test_language_of_path():
+    from codeplan.prepare import language_of_path
+
+    assert language_of_path("github:a/b/x.PY") == "python"
+    assert language_of_path("github:a/b/x.tsx") == "typescript"
+    assert language_of_path("github:a/b/README") is None

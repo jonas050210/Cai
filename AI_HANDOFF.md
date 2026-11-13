@@ -37,7 +37,10 @@ Implemented:
 - SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
 - Multicore data pipeline (parallel prepare, batched tokenisation).
 - Web chat UI with SSE streaming (`codeplan-serve`, `src/codeplan/web/`).
-- Tiny smoke config and synthetic seed data; 82 unit tests; CI (lint, tests, smoke).
+- 99M config (`configs/pretrain_100m_4060ti.json`, see `docs/100M_PLAN.md`),
+  syntax gate in `prepare --syntax-check`, curriculum script, `run.json`
+  provenance per run, determinism tests.
+- Tiny smoke config and synthetic seed data; 87 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
 - Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants

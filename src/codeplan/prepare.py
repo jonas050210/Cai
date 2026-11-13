@@ -8,6 +8,7 @@ comments and docs should still be DE/EN. The filter is conservative, not perfect
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -76,6 +77,68 @@ def bad_script_ratio(text: str) -> float:
         if is_disallowed_char(ch):
             bad += 1
     return bad / letters if letters else 0.0
+
+
+EXTENSION_LANGUAGE = {
+    "py": "python",
+    "js": "javascript",
+    "mjs": "javascript",
+    "cjs": "javascript",
+    "jsx": "javascript",
+    "ts": "typescript",
+    "tsx": "typescript",
+    "go": "go",
+    "rs": "rust",
+}
+
+
+def language_of_path(path: str) -> str | None:
+    if "." not in path:
+        return None
+    return EXTENSION_LANGUAGE.get(path.rsplit(".", 1)[-1].lower())
+
+
+def _balanced_brackets(text: str) -> bool:
+    """Cheap syntax sanity check for brace languages (false negatives are fine)."""
+    depth = {"(": 0, "[": 0, "{": 0}
+    closing = {")": "(", "]": "[", "}": "{"}
+    in_string: str | None = None
+    escaped = False
+    for ch in text:
+        if in_string:
+            if ch == "\n" and in_string != "`":
+                in_string = None  # "..." and '...' cannot span lines
+                continue
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == in_string:
+                in_string = None
+            continue
+        if ch in {"\"", "'", "`"}:
+            in_string = ch
+            continue
+        if ch in depth:
+            depth[ch] += 1
+        elif ch in closing:
+            depth[closing[ch]] -= 1
+            if depth[closing[ch]] < 0:
+                return False
+    return all(value == 0 for value in depth.values())
+
+
+def syntax_ok(text: str, language: str | None) -> bool:
+    """True when a file looks parseable; unknown languages pass through."""
+    if language == "python":
+        try:
+            ast.parse(text)
+        except (SyntaxError, ValueError):
+            return False
+        return True
+    if language in {"javascript", "typescript", "go", "rust"}:
+        return _balanced_brackets(text)
+    return True
 
 
 def normalize_text(text: str) -> str:
@@ -168,6 +231,7 @@ def _filter_params(
     max_bad_script_ratio: float,
     require_license: bool,
     sketch_config: dict | None,
+    syntax_check: bool = False,
 ) -> dict:
     return {
         "min_chars": min_chars,
@@ -175,6 +239,7 @@ def _filter_params(
         "max_bad_script_ratio": max_bad_script_ratio,
         "require_license": require_license,
         "sketch": sketch_config,
+        "syntax_check": syntax_check,
     }
 
 
@@ -212,6 +277,11 @@ def _filter_one(payload: tuple[str, dict]) -> tuple[str, dict | None, object]:
     license_name = rec.get("license", "unknown")
     if params["require_license"] and license_name in {"unknown", "", None}:
         return "missing_license", None, None
+
+    if params.get("syntax_check") and not syntax_ok(
+        text, language_of_path(str(rec.get("source", "")))
+    ):
+        return "syntax_error", None, None
 
     h = record_hash(text)
     out = {
@@ -256,6 +326,7 @@ def prepare(
     require_license: bool = False,
     near_dedup: NearDuplicateFilter | None = None,
     workers: int = 1,
+    syntax_check: bool = False,
 ) -> dict:
     """Filter, deduplicate and split a corpus.
 
@@ -277,7 +348,8 @@ def prepare(
             "min_chars": near_dedup.min_chars,
         }
     params = _filter_params(
-        min_chars, max_chars, max_bad_script_ratio, require_license, sketch_config
+        min_chars, max_chars, max_bad_script_ratio, require_license, sketch_config,
+        syntax_check,
     )
 
     def lines() -> Iterator[str]:
@@ -354,6 +426,11 @@ def main() -> None:
     parser.add_argument("--near-dedup-perm", type=int, default=128)
     parser.add_argument("--near-dedup-bands", type=int, default=32)
     parser.add_argument(
+        "--syntax-check",
+        action="store_true",
+        help="Drop files that do not parse (Python: ast, others: bracket balance)",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=0,
@@ -373,6 +450,7 @@ def main() -> None:
         Path(args.input), Path(args.out_dir), args.min_chars, args.max_chars,
         args.val_ratio, args.test_ratio, args.max_bad_script_ratio, args.require_license,
         near_dedup=near_dedup, workers=workers if workers > 1 else 1,
+        syntax_check=args.syntax_check,
     )
     if near_dedup is not None:
         stats["near_dedup"] = near_dedup.stats()
