@@ -87,6 +87,59 @@ class TrainConfig:
         d = asdict(self)
         return d
 
+    def validate(self) -> list[str]:
+        """Return a list of problems; empty means the config is usable."""
+        errors: list[str] = []
+        if self.batch_size < 1:
+            errors.append("batch_size must be >= 1")
+        if self.grad_accum < 1:
+            errors.append("grad_accum must be >= 1")
+        if self.seq_len < 8:
+            errors.append("seq_len must be >= 8")
+        if self.seq_len > self.model.max_seq_len:
+            errors.append(
+                f"seq_len ({self.seq_len}) exceeds model.max_seq_len ({self.model.max_seq_len})"
+            )
+        if self.model.d_model % self.model.n_heads != 0:
+            errors.append("model.d_model must be divisible by model.n_heads")
+        if self.model.n_layers < 1 or self.model.n_heads < 1:
+            errors.append("model.n_layers and model.n_heads must be >= 1")
+        if self.model.vocab_size < 1:
+            errors.append("model.vocab_size must be >= 1")
+        if not 0.0 <= self.model.dropout < 1.0:
+            errors.append("model.dropout must be in [0, 1)")
+        if self.lr <= 0:
+            errors.append("lr must be > 0")
+        if self.min_lr < 0 or self.min_lr > self.lr:
+            errors.append("min_lr must be in [0, lr]")
+        if self.max_steps < 1:
+            errors.append("max_steps must be >= 1")
+        if self.warmup_steps >= self.max_steps:
+            errors.append("warmup_steps must be smaller than max_steps")
+        if self.log_every < 1 or self.save_every < 1 or self.eval_every < 1:
+            errors.append("log_every, save_every and eval_every must be >= 1")
+        if self.eval_iters < 1:
+            errors.append("eval_iters must be >= 1 (set eval_every high to skip validation)")
+        if self.precision not in {"bf16", "fp16", "fp32"}:
+            errors.append("precision must be bf16, fp16 or fp32")
+        if self.keep_last_checkpoints < 0:
+            errors.append("keep_last_checkpoints must be >= 0")
+        if self.early_stop_patience < 0:
+            errors.append("early_stop_patience must be >= 0")
+        if not 0.0 <= self.sft_val_ratio < 0.9:
+            errors.append("sft_val_ratio must be in [0, 0.9)")
+        if not self.mixture:
+            errors.append("mixture must not be empty")
+        elif any(value < 0 for value in self.mixture.values()) or sum(self.mixture.values()) <= 0:
+            errors.append("mixture weights must be >= 0 and sum to more than 0")
+        return errors
+
+    def tokens_per_step(self) -> int:
+        return self.batch_size * self.grad_accum * self.seq_len
+
+    def total_tokens(self) -> int:
+        return self.max_steps * self.tokens_per_step()
+
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "TrainConfig":
         model_d = d.pop("model", {})

@@ -138,6 +138,26 @@ def _request(url: str, token: str | None, accept: str = "application/vnd.github+
         return response.read()
 
 
+def _download(url: str, token: str | None, max_bytes: int) -> bytes:
+    """Stream a download and abort before it gets too large for memory."""
+    headers = {"User-Agent": "codeplan-collect", "Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    chunks = []
+    total = 0
+    with urllib.request.urlopen(request, timeout=180) as response:
+        while True:
+            chunk = response.read(1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise ValueError(f"tarball exceeds {max_bytes / 1e6:.0f} MB limit")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def search_repos(
     language: str,
     spdx: str,
@@ -203,9 +223,7 @@ def repo_info(full_name: str, token: str | None) -> dict:
 def tarball_members(repo: str, branch: str, token: str | None, max_repo_mb: float):
     """Download a repository tarball and yield (relative path, bytes) members."""
     url = f"{API_ROOT}/repos/{repo}/tarball/{branch}"
-    raw = _request(url, token, accept="application/vnd.github+json")
-    if len(raw) > max_repo_mb * 1024 * 1024:
-        raise ValueError(f"tarball too large: {len(raw) / 1e6:.1f} MB")
+    raw = _download(url, token, int(max_repo_mb * 1024 * 1024))
     digest = hashlib.sha256(raw).hexdigest()
     members = []
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
@@ -296,8 +314,10 @@ def collect(
             if repo["size_kb"] < min_size_kb:
                 skip(repo, "skipped-small")
                 continue
-            if repo["size_kb"] > max_repo_mb * 1024:
-                skip(repo, "skipped-size")
+            # GitHub's size counts the whole history, tarballs are much smaller;
+            # the real limit is enforced while streaming the download.
+            if repo["size_kb"] > max_repo_mb * 1024 * 12:
+                skip(repo, "skipped-huge")
                 continue
             if dry_run:
                 print(f"  would collect {name} ({repo['license']}, {repo['stars']} stars)")

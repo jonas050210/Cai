@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import torch
@@ -23,6 +24,9 @@ def main() -> None:
     parser.add_argument("--device", default=None)
     parser.add_argument("--precision", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Build everything, print the plan, do not train"
+    )
     args = parser.parse_args()
 
     cfg = load_train_config(args.config)
@@ -34,6 +38,10 @@ def main() -> None:
         cfg.precision = args.precision
     if args.max_steps is not None:
         cfg.max_steps = args.max_steps
+
+    problems = cfg.validate()
+    if problems:
+        raise SystemExit("Invalid config:\n- " + "\n- ".join(problems))
 
     set_seed(cfg.seed)
     device = get_device(cfg.device)
@@ -93,6 +101,23 @@ def main() -> None:
             val_loader = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False, num_workers=0)
         except ValueError:
             val_loader = None
+
+    if args.dry_run:
+        plan = {
+            "device": str(device),
+            "precision": cfg.precision,
+            "parameters": model.num_parameters(),
+            "tokens_per_step": cfg.tokens_per_step(),
+            "max_steps": cfg.max_steps,
+            "total_tokens": cfg.total_tokens(),
+            "train_windows": len(train_ds),
+            "validation": val_loader is not None,
+            "mixture": weights,
+            "out_dir": cfg.out_dir,
+        }
+        print(json.dumps(plan, indent=2))
+        print("dry run: nothing was trained")
+        return
 
     save_json(Path(cfg.out_dir) / "config.json", cfg.to_dict())
     train_loop(

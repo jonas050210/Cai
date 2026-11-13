@@ -40,6 +40,7 @@ its license and a `github:owner/repo/path` source.
 The pipeline filters:
 - too short / too long records
 - exact duplicates (normalized SHA-256)
+- near-duplicates (MinHash 128 permutations, LSH bands, Jaccard >= 0.8) on request
 - non-DE/EN languages
 - high ratio of non-Latin scripts
 - unknown licenses if required

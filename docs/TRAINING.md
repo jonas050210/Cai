@@ -34,8 +34,15 @@ codeplan-ingest --input /path/to/files --out data/raw/my_data.jsonl --license "M
 Filter and split (keeps the manifest auditable via `data/raw/*.manifest.jsonl`):
 
 ```bash
-codeplan-prepare --input data/raw/github.jsonl --out-dir data/filtered --require-license
+codeplan-prepare --input data/raw/github.jsonl --out-dir data/filtered \
+  --require-license --near-dedup
+codeplan-stats --input data/filtered/train.jsonl --target-tokens 1000000000
 ```
+
+`--near-dedup` removes near-duplicates (MinHash 128 permutations, Jaccard 0.8,
+8-byte shingles) on top of exact hashing. `codeplan-stats` tells you how many
+tokens you really have and how many epochs a target budget would need; if it says
+"too little data", collect more instead of training.
 
 Code records are judged on their comments and docstrings. Code without prose is
 kept as `lang_source=code-default` instead of being dropped; foreign-language
@@ -72,7 +79,18 @@ Do not train the tokenizer on validation/test data.
 codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json --out-dir data/packed
 ```
 
-## 5. Pretrain
+## 5. Preflight
+
+```bash
+codeplan-doctor --config configs/pretrain_50m_4060ti.json --bench-steps 20
+```
+
+Checks Python/torch/CUDA/bf16, validates the config, verifies tokenizer and packed
+vocabularies, counts tokens per domain, estimates epochs, checkpoint disk usage,
+and — with `--bench-steps` — measures real throughput, peak VRAM and the expected
+wall clock. Exit code 1 means do not start.
+
+## 6. Pretrain
 
 One long run:
 
@@ -109,7 +127,7 @@ If you get CUDA OOM:
 - reduce `eval_iters`
 - close other GPU apps
 
-## 6. SFT
+## 7. SFT
 
 Create `data/sft/train.jsonl` with structured examples.
 
@@ -117,7 +135,7 @@ Create `data/sft/train.jsonl` with structured examples.
 codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl
 ```
 
-## 7. Evaluate
+## 8. Evaluate
 
 ```bash
 codeplan-eval --checkpoint checkpoints/sft_50m/last.pt --data-dir data/packed \
@@ -139,7 +157,7 @@ It reports pass@k and language compliance. It is **not** a real sandbox: the
 code runs as your user with CPU/memory/time limits only. Use a container for
 untrusted models.
 
-## 8. Export and serve
+## 9. Export and serve
 
 ```bash
 codeplan-export --checkpoint checkpoints/sft_50m/last.pt \
@@ -152,7 +170,7 @@ model size and context. Tied embeddings are exported once (`aliases` in the conf
 file lists the dropped duplicate); `codeplan.export.load_exported()` rebuilds the
 model from weights + config.
 
-## 9. Chat
+## 10. Chat
 
 ```bash
 codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
