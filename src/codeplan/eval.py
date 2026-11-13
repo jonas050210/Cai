@@ -1,8 +1,9 @@
-"""Evaluate perplexity on packed validation/test data."""
+"""Evaluate perplexity on packed validation/test data, optionally per domain."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 
@@ -16,19 +17,17 @@ from .utils import get_device, precision_dtype
 
 
 @torch.no_grad()
-def evaluate(checkpoint: str, data_dir: str, split: str, seq_len: int, batch_size: int,
-             max_batches: int, device_name: str, precision: str, tokenizer: str | None = None) -> dict:
-    device = get_device(device_name)
-    model, tok, _ = load_model_from_checkpoint(checkpoint, tokenizer, device_name)
-    dtype = precision_dtype(device, precision)
-    meta = load_meta(data_dir)
-    path = Path(data_dir) / f"{split}_all.bin"
-    if not path.exists():
-        raise FileNotFoundError(path)
-    ds = PackedDataset(path, seq_len, dtype=meta["dtype"])
+def evaluate_file(
+    model,
+    path: Path,
+    seq_len: int,
+    batch_size: int,
+    max_batches: int,
+    device: torch.device,
+    dtype: torch.dtype | None,
+) -> dict:
+    ds = PackedDataset(path, seq_len, dtype=load_meta(path.parent)["dtype"])
     loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
-    model.eval()
-
     losses = []
     for i, (x, _y) in enumerate(loader):
         if i >= max_batches:
@@ -40,12 +39,64 @@ def evaluate(checkpoint: str, data_dir: str, split: str, seq_len: int, batch_siz
 
     mean_loss = sum(losses) / max(1, len(losses))
     return {
-        "split": split,
+        "file": path.name,
         "batches": len(losses),
         "loss": mean_loss,
         "perplexity": math.exp(min(mean_loss, 20)),
-        "vocab_size": tok.vocab_size,
     }
+
+
+def evaluate(
+    checkpoint: str,
+    data_dir: str,
+    split: str,
+    seq_len: int,
+    batch_size: int,
+    max_batches: int,
+    device_name: str,
+    precision: str,
+    tokenizer: str | None = None,
+    per_domain: bool = False,
+) -> dict:
+    device = get_device(device_name)
+    model, tok, _ = load_model_from_checkpoint(checkpoint, tokenizer, device_name)
+    dtype = precision_dtype(device, precision)
+    model.eval()
+
+    if not per_domain:
+        path = Path(data_dir) / f"{split}_all.bin"
+        if not path.exists():
+            raise FileNotFoundError(path)
+        result = evaluate_file(
+            model, path, seq_len, batch_size, max_batches, device, dtype
+        )
+        result.update({"split": split, "vocab_size": tok.vocab_size})
+        return result
+
+    domains = {}
+    for path in sorted(Path(data_dir).glob(f"{split}_*.bin")):
+        domain = path.stem[len(split) + 1:]
+        if domain == "all":
+            continue
+        try:
+            domains[domain] = evaluate_file(
+                model, path, seq_len, batch_size, max_batches, device, dtype
+            )
+        except ValueError as exc:  # file shorter than seq_len + 1
+            domains[domain] = {"file": path.name, "error": str(exc)}
+    if not domains:
+        raise FileNotFoundError(f"No {split}_<domain>.bin files in {data_dir}")
+    weights = {name: d["loss"] for name, d in domains.items() if "loss" in d}
+    if not weights:
+        raise ValueError(f"No {split}_<domain>.bin file is long enough for seq_len={seq_len}")
+    result = {
+        "split": split,
+        "vocab_size": tok.vocab_size,
+        "domains": domains,
+        "mean_domain_loss": sum(weights.values()) / len(weights),
+        "mean_domain_perplexity": math.exp(min(sum(weights.values()) / len(weights), 20)),
+    }
+    return result
 
 
 def main() -> None:
@@ -59,12 +110,17 @@ def main() -> None:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--precision", default="bf16")
     parser.add_argument("--tokenizer", default=None)
+    parser.add_argument(
+        "--per-domain",
+        action="store_true",
+        help="Report loss/perplexity per domain file instead of the mixed _all file",
+    )
     args = parser.parse_args()
     result = evaluate(
         args.checkpoint, args.data_dir, args.split, args.seq_len, args.batch_size,
-        args.max_batches, args.device, args.precision, args.tokenizer,
+        args.max_batches, args.device, args.precision, args.tokenizer, args.per_domain,
     )
-    print(result)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

@@ -26,14 +26,28 @@ Each record should have:
 
 Use `--require-license` for serious runs.
 
+## Collection
+
+`codeplan-collect` only accepts repositories whose GitHub license identifier is on
+an explicit whitelist (MIT, Apache-2.0, BSD-2/3-Clause, ISC, CC0-1.0, Unlicense,
+MPL-2.0). It downloads tarballs (no git history), skips vendored/build/test
+directories and binary or generated files, and writes a manifest next to the JSONL
+with license, stars, size and the SHA-256 of every tarball. Every record carries
+its license and a `github:owner/repo/path` source.
+
 ## Filtering
 
 The pipeline filters:
 - too short / too long records
-- duplicates
-- non-DE/EN declared languages
+- exact duplicates (normalized SHA-256)
+- non-DE/EN languages
 - high ratio of non-Latin scripts
 - unknown licenses if required
+
+For `domain=code` only comments, docstrings and similar prose are language-checked
+(`lang_source=detected`). Code without prose is kept as language-neutral
+(`lang_source=code-default`) instead of being dropped. Declared `de`/`en` is trusted
+(`lang_source=declared`).
 
 This is not a perfect language detector. Manual audit is still needed.
 

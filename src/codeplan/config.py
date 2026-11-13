@@ -69,9 +69,14 @@ class TrainConfig:
     save_every: int = 1000
     eval_iters: int = 20
 
+    # checkpoints / early stopping
+    keep_last_checkpoints: int = 2  # 0 keeps everything
+    early_stop_patience: int = 0  # 0 disables early stopping
+
     # SFT only
     sft_data: str | None = None
     sft_max_len: int = 2048
+    sft_val_ratio: float = 0.05
 
     # Pretraining domain mixture. Target: 99% code + planning.
     mixture: dict[str, float] = field(default_factory=lambda: {"code": 0.65, "planning": 0.34, "general": 0.01})

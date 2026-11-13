@@ -78,6 +78,52 @@ def detect_lang(text: str, declared: str | None = None) -> str:
     return heuristic_lang(text)
 
 
+COMMENT_PATTERNS = [
+    re.compile(r'"""(.*?)"""', re.DOTALL),
+    re.compile(r"'''(.*?)'''", re.DOTALL),
+    re.compile(r"/\*(.*?)\*/", re.DOTALL),
+    re.compile(r"//\s*(.+)"),
+    re.compile(r"#\s*(.+)"),
+    re.compile(r"--\s*(.+)"),
+]
+
+
+def extract_natural_language(text: str) -> str:
+    """Pull comments, docstrings and similar prose out of source code."""
+    parts: list[str] = []
+    for pattern in COMMENT_PATTERNS:
+        parts.extend(pattern.findall(text))
+    return "\n".join(part.strip() for part in parts if part.strip())
+
+
+def detect_lang_for_record(text: str, declared: str | None, domain: str) -> tuple[str, str]:
+    """Return ``(lang, source)`` with source in declared/detected/code-default.
+
+    Code records are judged on their comments and docstrings only. A file that
+    contains no prose is language-neutral instead of a language-filter failure;
+    rejecting it would bias the corpus towards comment-heavy code.
+    """
+    if declared in ALLOWED_LANGS:
+        return declared, "declared"
+
+    prose = extract_natural_language(text) if domain == "code" else text
+    if prose.strip():
+        lang = detect_lang(prose)
+        if lang in ALLOWED_LANGS:
+            return lang, "detected"
+        if domain != "code" or len(prose.split()) >= 8:
+            return lang, "detected"
+    elif domain == "code":
+        return "en", "code-default"
+
+    lang = detect_lang(text)
+    if lang in ALLOWED_LANGS:
+        return lang, "detected"
+    if domain == "code" and len(prose.split()) < 8:
+        return "en", "code-default"
+    return lang, "detected"
+
+
 def record_hash(text: str) -> str:
     compact = re.sub(r"\s+", " ", text).strip().lower()
     return hashlib.sha256(compact.encode("utf-8")).hexdigest()
@@ -119,13 +165,13 @@ def prepare(
             if bad_script_ratio(text) > max_bad_script_ratio:
                 stats["bad_script"] += 1
                 continue
-            lang = detect_lang(text, rec.get("lang"))
-            if lang not in ALLOWED_LANGS:
-                stats["bad_lang"] += 1
-                continue
             domain = rec.get("domain", "general")
             if domain not in ALLOWED_DOMAINS:
                 stats["bad_domain"] += 1
+                continue
+            lang, lang_source = detect_lang_for_record(text, rec.get("lang"), domain)
+            if lang not in ALLOWED_LANGS:
+                stats["bad_lang"] += 1
                 continue
             license_name = rec.get("license", "unknown")
             if require_license and license_name in {"unknown", "", None}:
@@ -140,6 +186,7 @@ def prepare(
                 "id": rec.get("id", h[:16]),
                 "text": text,
                 "lang": lang,
+                "lang_source": lang_source,
                 "domain": domain,
                 "license": license_name,
                 "source": rec.get("source", "unknown"),
@@ -156,6 +203,7 @@ def prepare(
             stats[f"kept_{split}"] += 1
             stats[f"domain_{domain}"] += 1
             stats[f"lang_{lang}"] += 1
+            stats[f"lang_source_{lang_source}"] += 1
 
     for split, records in splits.items():
         with open(out_dir / f"{split}.jsonl", "w", encoding="utf-8") as f:

@@ -40,30 +40,61 @@ Der Smoke-Test nutzt winzige Seed-Daten und ein 0.12M-Modell. Er beweist nur, da
 ## Echte Pipeline
 
 ```bash
+# 0. (Optional) Permissiv lizenzierte Repos von GitHub sammeln (MIT/Apache/BSD/...)
+codeplan-collect --out data/raw/github.jsonl --max-repos 200 --languages python,typescript
+
 # 1. Eigene lokale Dateien einlesen
 codeplan-ingest --input /pfad/zu/deinen/dateien --out data/raw/my_data.jsonl --license "MIT" --source "my-repos"
 
 # 2. Filtern: DE/EN, Deduplizierung, Split
 codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license
 
-# 3. Tokenizer von Grund auf trainieren
-codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 32000
+# 3. Vokabular-Größe belegen (Tokens/Zeichen pro Domäne und Sprache)
+codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 16000,32000 --out artifacts/fertility.json
+
+# 3b. Tokenizer von Grund auf trainieren (Vokabular aus Schritt 3)
+codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 16000
 
 # 4. Daten packen
 codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json --out-dir data/packed
 
-# 5. Pretraining
+# 5. Pretraining (ein Lauf oder in kurzen Sessions mit Thermal-Schutz)
 codeplan-pretrain --config configs/pretrain_50m_4060ti.json
+# oder: bash scripts/train_session.sh --session-steps 800 --max-total 20000
 
 # 6. SFT für strukturierte Coding-/Planungsantworten
 codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl
 
-# 7. Evaluieren
-codeplan-eval --checkpoint checkpoints/sft_50m/last.pt --data-dir data/packed --split test --seq-len 2048
+# 7. Evaluieren: Perplexity pro Domäne + Coding-Aufgaben mit Testausführung
+codeplan-eval --checkpoint checkpoints/sft_50m/last.pt --data-dir data/packed --split test --seq-len 2048 --per-domain
+codeplan-bench --checkpoint checkpoints/sft_50m/last.pt --tasks data/bench/code_tasks.jsonl --allow-exec
 
 # 8. Chatten
 codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
+
+# 9. Exportieren und lokal servieren
+codeplan-export --checkpoint checkpoints/sft_50m/last.pt --out artifacts/model.safetensors --dtype bf16
+codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 8000
 ```
+
+## Werkzeuge
+
+| Befehl | Zweck |
+|---|---|
+| `codeplan-collect` | GitHub-Repos nach Lizenz-Whitelist laden (+ Manifest mit Checksums) |
+| `codeplan-ingest` | Lokale Dateien zu JSONL |
+| `codeplan-prepare` | DE/EN-Filter, Code-Kommentar-Filter, Dedup, Split |
+| `codeplan-fertility` | Tokenizer-Kennzahlen, Vokabular-Empfehlung |
+| `codeplan-tokenizer` / `codeplan-pack` | BPE-Training, binäre Datasets |
+| `codeplan-pretrain` | Pretraining (resumierbar, Early Stopping) |
+| `codeplan-sft` | SFT mit Assistant-only-Loss und Validierungssplit |
+| `codeplan-eval` | Perplexity gesamt oder pro Domäne |
+| `codeplan-bench` | Coding-Aufgaben, Tests im Subprozess, pass@k, Sprach-Compliance |
+| `codeplan-export` | safetensors + Config (`load_exported()` zum Zurückladen) |
+| `codeplan-serve` | FastAPI-Server (`/health`, `/generate`, Web-UI unter `/`) |
+
+> `codeplan-bench` führt generierten Code als deinen Benutzer aus. Es begrenzt
+> CPU-Zeit, Speicher und Laufzeit, ist aber **kein** echter Sandbox-Ersatz.
 
 ## Wichtige Dateien
 
@@ -75,7 +106,13 @@ src/codeplan/model.py              # Transformer von Grund auf
 src/codeplan/tokenizer.py          # BPE-Tokenizer + Chat-Template
 src/codeplan/prepare.py            # DE/EN-Filter, Dedup, Split
 src/codeplan/pack.py               # Binary-Datasets
-src/codeplan/trainer.py            # Training-Loop
+src/codeplan/trainer.py            # Training-Loop, Checkpoint-Retention, Early Stopping
+src/codeplan/collect.py            # GitHub-Sammler mit Lizenz-Whitelist
+src/codeplan/tokenizer_eval.py     # Tokenizer-Fertility / Vokabular-Entscheidung
+src/codeplan/bench.py              # Coding-Benchmark mit Testausführung
+src/codeplan/export.py             # safetensors-Export
+src/codeplan/server.py             # FastAPI-Inferenzserver
+scripts/train_session.sh           # Training in Sessions + Thermal-Guard
 data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
 ```

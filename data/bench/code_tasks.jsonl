@@ -1,0 +1,5 @@
+{"id": "add", "prompt": "Write a Python function add(a, b) that returns the sum.", "tests": "assert add(2, 3) == 5\nassert add(-1, 1) == 0\nassert add(0, 0) == 0"}
+{"id": "is_even", "prompt": "Write a Python function is_even(n) that returns True for even integers.", "tests": "assert is_even(4) is True\nassert is_even(7) is False\nassert is_even(0) is True"}
+{"id": "factorial", "prompt": "Write a Python function factorial(n) using a loop.", "tests": "assert factorial(0) == 1\nassert factorial(1) == 1\nassert factorial(5) == 120"}
+{"id": "reverse_words", "prompt": "Write a Python function reverse_words(text) that reverses the order of words.", "tests": "assert reverse_words('hello world') == 'world hello'\nassert reverse_words('a') == 'a'"}
+{"id": "max_list", "prompt": "Write a Python function max_list(items) that returns the largest element.", "tests": "assert max_list([1, 5, 3]) == 5\nassert max_list([-2, -7]) == -2"}

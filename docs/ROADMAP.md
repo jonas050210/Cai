@@ -10,34 +10,42 @@
 - [x] SFT loop
 - [x] Generation/chat
 - [x] Smoke test
+- [x] Unit tests + CI (lint, tests, smoke)
 
 ## Phase 1: Data
 
-- [ ] Collect licensed DE/EN code
-- [ ] Collect DE/EN planning/spec/architecture text
-- [ ] Improve comment-level language filtering
-- [ ] Add dataset manifest and checksums
-- [ ] Audit tokenizer fertility
+- [x] Licensed collection tooling with license whitelist (`codeplan-collect`)
+- [x] Dataset manifest with checksums
+- [x] Code-aware language filtering (comments/docstrings instead of whole file)
+- [x] Tokenizer fertility analysis (`codeplan-fertility`)
+- [ ] Collect the actual DE/EN corpus at scale
+- [ ] Near-duplicate detection (MinHash/SimHash)
+- [ ] Manual license audit of the manifest
 
 ## Phase 2: Training
 
+- [x] Checkpoint retention (`keep_last_checkpoints`)
+- [x] Early stopping (`early_stop_patience`)
+- [x] Resumable short sessions + GPU thermal guard
+- [x] Validation loss restored on resume
 - [ ] Train 50M baseline
-- [ ] Track validation loss and sample quality
-- [ ] Add early stopping
+- [ ] Track sample quality over time
 - [ ] Add learning-rate finder
 - [ ] Try 1024 vs 2048 context
 
 ## Phase 3: Evaluation
 
-- [ ] Add small DE/EN coding tasks
-- [ ] Execute generated tests in sandbox
-- [ ] Add pass@1 / pass@k
-- [ ] Add language-compliance eval
-- [ ] Add planning-quality rubric
+- [x] Per-domain perplexity (`--per-domain`)
+- [x] Coding tasks with unit-test execution (`codeplan-bench`)
+- [x] pass@1 / pass@k
+- [x] Language-compliance measurement
+- [ ] Real sandboxing (containers) for test execution
+- [ ] Planning-quality rubric
 
 ## Phase 4: Product
 
-- [ ] Export safetensors
-- [ ] Local FastAPI inference server
-- [ ] Simple web UI
-- [ ] Quantized inference if useful
+- [x] Export to safetensors
+- [x] Local FastAPI inference server
+- [x] Simple web UI
+- [ ] Quantized inference
+- [ ] Streaming responses

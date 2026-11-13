@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "safetensors>=0.4"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "safetensors>=0.4"]
 
 [project.scripts]
 codeplan-ingest = "codeplan.ingest:main"
@@ -31,6 +32,11 @@ codeplan-sft = "codeplan.sft:main"
 codeplan-generate = "codeplan.generate:main"
 codeplan-chat = "codeplan.chat:main"
 codeplan-eval = "codeplan.eval:main"
+codeplan-collect = "codeplan.collect:main"
+codeplan-fertility = "codeplan.tokenizer_eval:main"
+codeplan-bench = "codeplan.bench:main"
+codeplan-export = "codeplan.export:main"
+codeplan-serve = "codeplan.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

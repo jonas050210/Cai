@@ -59,12 +59,16 @@ def main() -> None:
     scaler = torch.amp.GradScaler("cuda", enabled=use_scaler) if device.type == "cuda" else None
 
     start_step = 0
+    best_val = float("inf")
+    bad_evals = 0
     if cfg.resume:
         payload = load_checkpoint(
             cfg.resume, model, optimizer, scheduler, scaler, device, restore_rng=True
         )
         start_step = int(payload["step"]) + 1
-        print(f"Resumed from {cfg.resume} at step {start_step}")
+        best_val = float(payload.get("val_loss") or float("inf"))
+        bad_evals = int(payload.get("bad_evals") or 0)
+        print(f"Resumed from {cfg.resume} at step {start_step} (best_val={best_val:.4f})")
     elif cfg.init_checkpoint:
         load_checkpoint(cfg.init_checkpoint, model, device=device)
         print(f"Initialized weights from {cfg.init_checkpoint}")
@@ -94,6 +98,7 @@ def main() -> None:
     train_loop(
         model, train_loader, cfg, device, dtype, optimizer, scheduler, scaler,
         start_step=start_step, val_loader=val_loader, mode="pretrain",
+        best_val=best_val, bad_evals=bad_evals,
     )
 
 

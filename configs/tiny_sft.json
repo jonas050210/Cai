@@ -7,12 +7,12 @@
   "grad_accum": 1,
   "max_steps": 20,
   "lr": 0.0005,
-  "min_lr": 0.00005,
+  "min_lr": 5e-05,
   "warmup_steps": 2,
   "weight_decay": 0.01,
   "beta1": 0.9,
   "beta2": 0.95,
-  "eps": 1e-8,
+  "eps": 1e-08,
   "grad_clip": 1.0,
   "device": "cpu",
   "precision": "fp32",
@@ -43,5 +43,8 @@
     "rope_theta": 10000.0,
     "tie_embeddings": true,
     "gradient_checkpointing": false
-  }
+  },
+  "keep_last_checkpoints": 2,
+  "early_stop_patience": 0,
+  "sft_val_ratio": 0.05
 }
