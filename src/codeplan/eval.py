@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from .data import PackedDataset, load_meta
 from .generate import load_model_from_checkpoint
+from .token_classes import evaluate_classes, format_table, vocab_classes
 from .trainer import autocast_context
 from .utils import get_device, precision_dtype
 
@@ -57,11 +58,23 @@ def evaluate(
     precision: str,
     tokenizer: str | None = None,
     per_domain: bool = False,
+    token_classes: bool = False,
 ) -> dict:
     device = get_device(device_name)
     model, tok, _ = load_model_from_checkpoint(checkpoint, tokenizer, device_name)
     dtype = precision_dtype(device, precision)
     model.eval()
+
+    if token_classes:
+        path = Path(data_dir) / f"{split}_all.bin"
+        if not path.exists():
+            raise FileNotFoundError(path)
+        result = evaluate_classes(
+            model, path, seq_len, batch_size, max_batches, device, dtype,
+            vocab_classes(tok.tokenizer.get_vocab()),
+        )
+        result.update({"split": split, "vocab_size": tok.vocab_size})
+        return result
 
     if not per_domain:
         path = Path(data_dir) / f"{split}_all.bin"
@@ -115,11 +128,19 @@ def main() -> None:
         action="store_true",
         help="Report loss/perplexity per domain file instead of the mixed _all file",
     )
+    parser.add_argument(
+        "--token-classes",
+        action="store_true",
+        help="Split the loss by predicted token kind (identifier, number, keyword, ...)",
+    )
     args = parser.parse_args()
     result = evaluate(
         args.checkpoint, args.data_dir, args.split, args.seq_len, args.batch_size,
         args.max_batches, args.device, args.precision, args.tokenizer, args.per_domain,
+        args.token_classes,
     )
+    if args.token_classes:
+        print(format_table(result))
     print(json.dumps(result, indent=2))
 
 

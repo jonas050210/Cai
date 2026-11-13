@@ -144,6 +144,31 @@ Fragt den Token versteckt ab, prüft ihn gegen die GitHub-API, legt ihn in
 `~/.bashrc`. Danach nutzen ihn alle Terminals und alle Werkzeuge — auch ohne
 Neustart, weil der Sammler die Datei selbst liest.
 
+## Was das Modell nicht kann
+
+`codeplan-eval --token-classes` teilt den Val-Loss nach Token-Art auf, statt
+eine Zahl zu zeigen:
+
+```
+class             tokens   share     loss       ppl
+identifier           225   44.1%    4.515     91.41
+operator             138   27.1%    0.922      2.51
+keyword               55   10.8%    0.897      2.45
+```
+
+Bezeichner sind der Engpass — Operatoren und Keywords sitzen. Genau das, was
+„Perplexity 15" verdeckt.
+
+## Checkpoints mitteln
+
+```bash
+codeplan-soup --dir checkpoints/pretrain_100m --last 5 --out checkpoints/pretrain_100m/soup.pt
+codeplan-eval --checkpoint checkpoints/pretrain_100m/soup.pt --data-dir data/packed
+```
+
+Gratis-Qualität: kein Training, kein zusätzliches Datum, meist 2–5 % besserer
+Val-Loss.
+
 ## Kuratierte Repos
 
 `data/repos/core.txt` — **53 Repositories**, jede Lizenz einzeln über die

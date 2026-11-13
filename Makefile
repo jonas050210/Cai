@@ -1,4 +1,4 @@
-.PHONY: setup smoke quick test lint ci curriculum pilot collect stats sft-data prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
+.PHONY: setup smoke quick test lint ci curriculum pilot collect stats sft-data prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve soup tok-classes collect-core
 
 setup:
 	pip install -e ".[dev]"
@@ -67,6 +67,15 @@ bench:
 
 export:
 	codeplan-export --checkpoint checkpoints/sft_50m/last.pt --out artifacts/model.safetensors --dtype bf16
+
+soup:
+	codeplan-soup --dir checkpoints/pretrain_100m --last 5 --out checkpoints/pretrain_100m/soup.pt
+
+tok-classes:
+	codeplan-eval --checkpoint checkpoints/pretrain_100m/last.pt --data-dir data/packed --token-classes
+
+collect-core:
+	bash scripts/collect_core.sh
 
 serve:
 	codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 8000
