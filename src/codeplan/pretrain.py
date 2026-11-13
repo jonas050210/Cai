@@ -50,6 +50,13 @@ def main() -> None:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
+    if not Path(cfg.tokenizer_path).exists():
+        raise SystemExit(
+            f"Tokenizer not found: {cfg.tokenizer_path}\n"
+            "Build it first:\n"
+            "  bash scripts/pilot.sh            # real corpus (needs GITHUB_TOKEN)\n"
+            "  bash scripts/quick_test.sh       # mini corpus from data/seed, no download"
+        )
     tokenizer = CodePlanTokenizer.load(cfg.tokenizer_path)
     cfg.model.vocab_size = tokenizer.vocab_size
     meta = load_meta(cfg.data_dir)
