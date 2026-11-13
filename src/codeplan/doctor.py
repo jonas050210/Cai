@@ -74,7 +74,13 @@ def check_config(cfg: TrainConfig) -> list[tuple[str, str]]:
         )
     )
     tokens = cfg.total_tokens()
-    results.append(_line(OK, f"{cfg.max_steps:,} steps = {tokens / 1e6:.0f}M tokens"))
+    if tokens >= 1e9:
+        human = f"{tokens / 1e9:.2f}B"
+    elif tokens >= 1e6:
+        human = f"{tokens / 1e6:.0f}M"
+    else:
+        human = f"{tokens / 1e3:.0f}k"
+    results.append(_line(OK, f"{cfg.max_steps:,} steps = {human} tokens"))
     if cfg.warmup_steps >= cfg.max_steps // 10:
         results.append(
             _line(WARN, f"warmup {cfg.warmup_steps} steps is >10% of max_steps")
@@ -172,7 +178,10 @@ def check_model(cfg: TrainConfig, device_name: str) -> list[tuple[str, str]]:
             f"embedding share: {embedding / params:.1%} of parameters"
             f" ({cfg.model.vocab_size:,} x {cfg.model.d_model})",
         ),
-        _line(OK, f"tokens per parameter: {cfg.total_tokens() / params:.1f} (Chinchilla ~20)"),
+        _line(
+            OK,
+            f"tokens per parameter: {cfg.total_tokens() / params:.2f} (Chinchilla ~20)",
+        ),
     ]
     del model
     return results

@@ -3,6 +3,27 @@
 Two paths. Pick **A** first; it takes an evening and proves the whole chain on
 real data. **B** is the real training run and needs a corpus ~50x larger.
 
+## Path 0: five-minute test
+
+Needs no data download and no GPU:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" bash scripts/smoke_test.sh   # ~25 s, synthetic seed data
+```
+
+Proves install, tokenizer, packing, train loop, checkpoint save/load, export,
+import and the server. If this fails, nothing else will work.
+
+Once the pilot corpus exists (`bash scripts/pilot.sh`), the next step up is a
+real run with a small model on real data (~3-5 min on CPU, <1 min on GPU):
+
+```bash
+codeplan-pretrain --config configs/quick_test.json
+```
+
+7.5M parameters, 150 steps x 1,024 tokens, val loss every 50 steps. Loss must
+fall from ~9.6 to below ~7.5; that is the "everything really works" signal.
+
 ## Path A: pipeline test (pilot corpus, ~12M tokens)
 
 Cost: ~30 min data work + 1-2 h training on a 4060 Ti (3-4 h on CPU).
