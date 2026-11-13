@@ -9,6 +9,12 @@
 # last.pt. The loop stops when the GPU is too hot for too long.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+# use the project venv even when it is not activated
+export PATH="$ROOT/.venv/bin:$PATH"
+
 CONFIG="configs/pretrain_50m_4060ti.json"
 SESSION_STEPS=800
 MAX_TOTAL=20000

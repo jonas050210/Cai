@@ -167,6 +167,7 @@ def train_loop(
 
     tokens_per_step = cfg.batch_size * cfg.grad_accum * cfg.seq_len
     t0 = time.time()
+    last_log_step = start_step
     step = start_step - 1
 
     for step in range(start_step, cfg.max_steps):
@@ -208,7 +209,11 @@ def train_loop(
 
         if step % cfg.log_every == 0 or step == cfg.max_steps - 1:
             elapsed = time.time() - t0
-            toks = (step - start_step + 1) * tokens_per_step
+            # throughput of the interval since the last log line, not the average
+            # since step 0 (otherwise the first line is measured over one step and
+            # every later line over the whole run, which reads as a fake speedup)
+            interval_steps = step - last_log_step + 1
+            toks = interval_steps * tokens_per_step
             lr = optimizer.param_groups[0]["lr"]
             record = {
                 "step": step,
@@ -225,6 +230,7 @@ def train_loop(
                 flush=True,
             )
             t0 = time.time()
+            last_log_step = step + 1
 
         if val_loader is not None and (
             step % cfg.eval_every == 0 or step == cfg.max_steps - 1

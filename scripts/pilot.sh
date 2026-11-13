@@ -11,10 +11,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# use the project venv even when it is not activated
+export PATH="$ROOT/.venv/bin:$PATH"
+
 REPOS="psf/requests,pallets/flask,pallets/click,encode/httpx,expressjs/express,axios/axios,\
 chalk/chalk,BurntSushi/ripgrep,gin-gonic/gin,python-poetry/poetry,pytest-dev/pytest,\
 fastapi/fastapi,pydantic/pydantic,Textualize/rich,vitejs/vite,tailwindlabs/tailwindcss,\
 prettier/prettier,gofiber/fiber"
+
+if ! command -v codeplan-collect >/dev/null 2>&1; then
+  echo "codeplan tools not found. Install them first:" >&2
+  echo '  python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"' >&2
+  exit 1
+fi
 
 if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   echo "GITHUB_TOKEN is not set; the collector will be slow (60 requests/hour)."
