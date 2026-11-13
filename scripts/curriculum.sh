@@ -3,13 +3,13 @@
 #
 #   bash scripts/curriculum.sh --config configs/pretrain_100m_4060ti.json
 #
-# Short sequences in the first phase mean more samples per second while the
-# model is still learning local structure; the second phase sees the real
-# 2048-token context. Both phases share one checkpoint, so nothing is repeated.
+# Phase 1 uses the same number of *tokens* as its share of the run, but at seq
+# 512 - so it sees four times as many distinct documents while the model is still
+# learning local structure. Phase 2 then spends the remaining tokens on the full
+# 2048 context. Both phases share one checkpoint, so nothing is trained twice.
 #
-# Why this helps: at seq 512 the same number of steps covers 4x more distinct
-# text, which is where the early loss drop comes from. The model architecture
-# (max_seq_len) never changes, so the resume is exact.
+# The architecture (max_seq_len) never changes, so the resume is exact. Time is
+# roughly the same as an uninterrupted run; the win is sample diversity early.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +39,8 @@ import sys
 config_path, short_seq, fraction, max_steps = sys.argv[1:5]
 cfg = json.load(open(config_path))
 total = int(max_steps) if max_steps else cfg["max_steps"]
-phase1 = max(1, int(total * float(fraction)))
+# same token budget as its share of the run, four times the steps
+phase1 = max(1, int(total * float(fraction) * (cfg["seq_len"] / int(short_seq))))
 
 phase1_cfg = dict(cfg)
 phase1_cfg["seq_len"] = int(short_seq)
@@ -53,8 +54,10 @@ phase2_cfg["max_steps"] = total
 phase2_cfg["warmup_steps"] = 1          # already warm, keep the LR schedule
 json.dump(phase2_cfg, open("artifacts/curriculum_phase2.json", "w"), indent=2)
 
-print(f"phase 1: seq {short_seq}, steps 0-{phase1}")
-print(f"phase 2: seq {cfg['seq_len']}, steps {phase1}-{total}")
+tokens1 = phase1 * cfg["batch_size"] * cfg["grad_accum"] * int(short_seq)
+tokens2 = (total - max(phase1, 0)) * cfg["batch_size"] * cfg["grad_accum"] * cfg["seq_len"]
+print(f"phase 1: seq {short_seq}, {phase1} steps = {tokens1/1e6:.0f}M tokens")
+print(f"phase 2: seq {cfg['seq_len']}, {total - phase1} steps = {max(0, tokens2)/1e6:.0f}M tokens")
 PY
 
 echo "=== phase 1 (short windows) ==="

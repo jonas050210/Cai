@@ -1,0 +1,10 @@
+# Large permissive repositories (slow download, use with --max-repo-mb)
+# 6 repos with >300 MB history
+# one owner/name per line, everything else is a comment
+
+Textualize/textual
+microsoft/TypeScript
+nestjs/nest
+pandas-dev/pandas
+pydantic/pydantic
+storybookjs/storybook

@@ -58,14 +58,28 @@ Minimum sensible order of business:
 2. only then start the 100M run,
 3. keep the 40M model as the fast baseline for experiments.
 
+## Time table (measured baseline: 53k tok/s for 40M)
+
+The 99M model has 2.5x the compute per token: expect **~20-22k tok/s**, so
+983M tokens take **~12-14 hours**. Shortening the run is one flag:
+
+| `max_steps` | tokens | time at 21k tok/s |
+|---|---|---|
+| 30,000 | 983M | ~13 h |
+| 15,000 | 491M | ~6.5 h |
+| 8,000 | 262M | ~3.5 h |
+
+```bash
+codeplan-pretrain --config configs/pretrain_100m_4060ti.json --max-steps 15000
+```
+
 ## Commands
 
 ```bash
-export GITHUB_TOKEN=...
+bash scripts/install_token.sh     # token once, valid everywhere
 
 # 1. data
-codeplan-collect --out data/raw/more.jsonl --max-repos 400 --min-stars 2000 \
-  --languages python,typescript,javascript,rust,go
+bash scripts/collect_core.sh      # 53 curated repos + filter + token budget
 codeplan-prepare --input data/raw/more.jsonl --out-dir data/filtered \
   --require-license --near-dedup --syntax-check
 codeplan-stats --input data/filtered/train.jsonl --target-tokens 983000000
