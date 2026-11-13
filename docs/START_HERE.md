@@ -42,7 +42,31 @@ Danach benutzen ihn `collect`, `git` und `gh` automatisch. Prüfen:
 echo "${GITHUB_TOKEN:0:7}"
 ```
 
-## 4. Korpus bauen
+## 4a. Nur herunterladen (Laptop, ohne GPU)
+
+Der Download braucht weder GPU noch torch. Auf einem leisen Laptop:
+
+```bash
+bash scripts/install_token.sh
+bash scripts/download_only.sh          # ~30-40 min, ~2 GB in data/raw/
+```
+
+Danach `data/raw/` per USB-Stick in denselben Ordner auf den Trainings-PC
+kopieren und dort `bash scripts/build_corpus.sh` ausführen (überspringt den
+Download automatisch).
+
+**Bildschirm aus ist egal, Deckel zu nicht.** Vorher sperren:
+
+```bash
+# Ubuntu: Suspend komplett aus
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+# Windows (PowerShell): Deckel und Ruhezustand aus
+#   powercfg /change standby-timeout-ac 0
+#   powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+#   powercfg -setactive SCHEME_CURRENT
+```
+
+## 4b. Korpus bauen
 
 Über Nacht, läuft im Hintergrund weiter wenn du das Terminal schließt:
 
