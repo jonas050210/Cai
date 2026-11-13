@@ -44,13 +44,21 @@ echo "${GITHUB_TOKEN:0:7}"
 
 ## 4. Korpus bauen
 
+Über Nacht, läuft im Hintergrund weiter wenn du das Terminal schließt:
+
 ```bash
-tmux new -s corpus
-bash scripts/build_corpus.sh
+bash scripts/overnight.sh
+tail -f logs/overnight-*.log
 ```
 
-Sammelt 53 kuratierte + 420 weitere Repos, filtert (Lizenz, Near-Dedup,
-Syntax-Gate), baut Tokenizer, packt, prüft mit `doctor`. **2–4 h.**
+**~30–40 min** für 473 Repos (12 parallele Downloads), danach Filtern, Tokenizer,
+Packen, `doctor`. Ohne Hintergrund:
+
+```bash
+bash scripts/build_corpus.sh          # gleiche Kette, im Vordergrund
+```
+
+Gemessen: 40 Repos mit 12 Workern ≈ 2,5 min, also ~4 s pro Repo.
 
 Jeder Schritt wird übersprungen, wenn sein Ergebnis existiert — abbrechen ist
 unschädlich, derselbe Befehl macht weiter. Varianten:

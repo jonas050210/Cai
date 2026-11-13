@@ -4,6 +4,7 @@
 #   bash scripts/build_corpus.sh                 # core + wide lists (~2-4 h)
 #   bash scripts/build_corpus.sh --core-only     # only the 53 core repos (~45 min)
 #   bash scripts/build_corpus.sh --stop-after stats
+#   bash scripts/build_corpus.sh --workers 16     # more parallel downloads
 #
 # Every step is idempotent: if the output file is already there, it is skipped.
 # Interrupting is safe - rerun the same command and it continues where the
@@ -17,6 +18,7 @@ export PATH="$ROOT/.venv/bin:$PATH"
 REPOS="core,wide"
 STOP_AFTER="doctor"
 VOCAB=16000
+WORKERS=12
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,6 +26,7 @@ while [[ $# -gt 0 ]]; do
     --repos) REPOS="$2"; shift 2 ;;
     --stop-after) STOP_AFTER="$2"; shift 2 ;;
     --vocab) VOCAB="$2"; shift 2 ;;
+    --workers) WORKERS="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -59,7 +62,7 @@ for list in "${LISTS[@]}"; do
   count=$(grep -vc '^#' "data/repos/${list}.txt" || true)
   stage "collect ${list} (${count} repos)"
   codeplan-collect --out "$raw" --repos-file "data/repos/${list}.txt" \
-    --max-repo-mb 40 --sleep 0.2
+    --max-repo-mb 40 --workers "${WORKERS}" --sleep 0.2
 done
 reached collect
 
