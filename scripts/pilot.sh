@@ -32,6 +32,11 @@ fi
 echo "== 1/6 collect =="
 codeplan-collect --out data/raw/pilot.jsonl --repos "$REPOS" --sleep 0.2
 
+if [[ ! -s data/raw/pilot.jsonl ]]; then
+  echo "collection produced no data; stopping before the rest of the pipeline" >&2
+  exit 1
+fi
+
 echo "== 2/6 filter + near-dedup =="
 codeplan-prepare \
   --input data/raw/pilot.jsonl \
