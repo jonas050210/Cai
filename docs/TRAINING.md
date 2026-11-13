@@ -198,3 +198,30 @@ codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
 ## Expected scale
 
 A 50M model usually needs hundreds of millions to billions of clean tokens before it becomes interesting. The default 20k steps at effective batch ~32k tokens is roughly 650M tokens. On a single 4060 Ti this can take many hours to days depending on throughput.
+
+## Was das Modell nicht kann
+
+Ein Perplexity-Wert sagt nicht, *wo* es hakt. `codeplan-eval --token-classes`
+teilt den Loss nach Token-Art (identifier, keyword, number, string, operator,
+whitespace) und zeigt Anteil plus Perplexity pro Klasse. Bezeichner dominieren
+den Loss typischerweise — dort lohnt Feintuning, nicht bei Keywords.
+
+```bash
+codeplan-eval --checkpoint checkpoints/sft_100m/last.pt --data-dir data/packed \
+  --seq-len 2048 --max-batches 50 --token-classes
+```
+
+## Checkpoints mitteln (Soup)
+
+Die letzten N Checkpoints eines Laufs sind meist nah beieinander; ihr Mittel
+ist fast immer besser als jeder einzelne. `codeplan-soup` mittelt in float32
+und behält Architektur/Config des jüngsten Checkpoints.
+
+```bash
+codeplan-soup --dir checkpoints/pretrain_100m --last 5 --out checkpoints/pretrain_100m/soup.pt
+codeplan-eval --checkpoint checkpoints/pretrain_100m/soup.pt --data-dir data/packed
+```
+
+Gewichtung ist möglich (`--weights 1,1,2`), z. B. wenn der letzte Checkpoint
+näher am Optimum liegt. Für ein Modell mit anderen LR-Grenzen lohnt sich erst
+ein Blick auf die Val-Kurve, dann auf das gemittelte Modell.
