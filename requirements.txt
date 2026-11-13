@@ -1,0 +1,5 @@
+torch>=2.4
+tokenizers>=0.19
+numpy>=1.26
+tqdm>=4.66
+langdetect>=1.0.9
