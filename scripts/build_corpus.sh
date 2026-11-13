@@ -62,7 +62,7 @@ for list in "${LISTS[@]}"; do
   count=$(grep -vc '^#' "data/repos/${list}.txt" || true)
   stage "collect ${list} (${count} repos)"
   codeplan-collect --out "$raw" --repos-file "data/repos/${list}.txt" \
-    --max-repo-mb 40 --workers "${WORKERS}" --sleep 0.2
+    --max-repo-mb 50 --workers "${WORKERS}" --sleep 0.2
 done
 reached collect
 

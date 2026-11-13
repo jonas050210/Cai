@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -356,11 +357,33 @@ def _report_lookup_error(name: str, exc: Exception, rejected: list[str]) -> int:
 
 
 def download_records(
-    repo: dict, token: str | None, max_repo_mb: float
+    repo: dict, token: str | None, max_repo_mb: float, attempts: int = 2
 ) -> tuple[list[dict], str, int]:
-    """Download one repository and turn it into records (runs in a worker thread)."""
-    members, digest = tarball_members(repo["full_name"], repo["branch"], token, max_repo_mb)
-    return records_from_files(repo["full_name"], repo["license"], members), digest, len(members)
+    """Download one repository and turn it into records (runs in a worker thread).
+
+    A truncated body can also surface as ``tarfile.EOFError`` or a gzip/zlib
+    error after a clean-looking download, so the whole download+unpack step is
+    retried, not just the HTTP read.
+    """
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            members, digest = tarball_members(
+                repo["full_name"], repo["branch"], token, max_repo_mb
+            )
+            return (
+                records_from_files(repo["full_name"], repo["license"], members),
+                digest,
+                len(members),
+            )
+        except ValueError:
+            raise  # too large is not transient
+        except (tarfile.TarError, EOFError, OSError, zlib.error) as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(2 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def tarball_members(repo: str, branch: str, token: str | None, max_repo_mb: float):
@@ -624,6 +647,11 @@ def main() -> None:
             line.split("#", 1)[0].strip() for line in listed
         )
         repos = [name for name in repos if name]
+
+    # An explicit list is the budget: --max-repos defaults to 200 and used to
+    # silently cut a 420-repository list down to its first 200 entries.
+    if repos and args.max_repos == parser.get_default("max_repos"):
+        args.max_repos = len(repos)
 
     if not args.token:
         print("Note: no GITHUB_TOKEN set; API limit is 60 requests/hour.")
