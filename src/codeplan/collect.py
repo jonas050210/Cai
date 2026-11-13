@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -174,24 +175,52 @@ def _request(url: str, token: str | None, accept: str = "application/vnd.github+
         return response.read()
 
 
-def _download(url: str, token: str | None, max_bytes: int) -> bytes:
-    """Stream a download and abort before it gets too large for memory."""
+TRANSIENT_ERRORS = (
+    http.client.IncompleteRead,
+    http.client.BadStatusLine,
+    ConnectionResetError,
+    ConnectionAbortedError,
+    TimeoutError,
+    urllib.error.URLError,
+)
+
+
+def _download(url: str, token: str | None, max_bytes: int, attempts: int = 3) -> bytes:
+    """Stream a download and abort before it gets too large for memory.
+
+    Home connections drop large transfers; a truncated chunked response raises
+    ``IncompleteRead``. Retry a few times with backoff before giving up, so one
+    flaky repo cannot end a 470-repository overnight run.
+    """
     headers = {"User-Agent": "codeplan-collect", "Accept": "application/vnd.github+json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    chunks = []
-    total = 0
-    with urllib.request.urlopen(request, timeout=180) as response:
-        while True:
-            chunk = response.read(1 << 20)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_bytes:
-                raise ValueError(f"tarball exceeds {max_bytes / 1e6:.0f} MB limit")
-            chunks.append(chunk)
-    return b"".join(chunks)
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        request = urllib.request.Request(url, headers=headers)
+        chunks = []
+        total = 0
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                while True:
+                    chunk = response.read(1 << 20)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise ValueError(
+                            f"tarball exceeds {max_bytes / 1e6:.0f} MB limit"
+                        )
+                    chunks.append(chunk)
+            return b"".join(chunks)
+        except ValueError:
+            raise  # too large is not transient
+        except TRANSIENT_ERRORS as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(2 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def search_repos(
@@ -269,12 +298,20 @@ def fetch_candidates(
     unauthorized = 0
 
     def one(full_name: str) -> tuple[str, Any]:
-        try:
-            return full_name, repo_info(full_name, token)
-        except urllib.error.HTTPError as exc:
-            return full_name, exc
-        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-            return full_name, exc
+        for attempt in range(3):
+            try:
+                return full_name, repo_info(full_name, token)
+            except urllib.error.HTTPError as exc:
+                if exc.code >= 500 and attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                return full_name, exc
+            except (*TRANSIENT_ERRORS, ValueError) as exc:
+                if attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                return full_name, exc
+        return full_name, RuntimeError(f"{full_name}: metadata lookup failed")
 
     if workers <= 1:
         results = ((name, one(name)[1], 0) for name in repos)
@@ -289,9 +326,12 @@ def fetch_candidates(
             time.sleep(sleep)
         return candidates, rejected, unauthorized
 
+    print(f"looking up {len(repos)} repositories with {workers} workers", flush=True)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(one, name) for name in repos]
-        for future in as_completed(futures):
+        for done, future in enumerate(as_completed(futures), start=1):
+            if done % 25 == 0 or done == len(repos):
+                print(f"  metadata {done}/{len(repos)}", flush=True)
             name, info = future.result()
             if isinstance(info, Exception):
                 unauthorized += _report_lookup_error(name, info, rejected)
@@ -358,14 +398,32 @@ def collect(
     min_size_kb: int = 100,
     min_records_per_repo: int = 5,
     workers: int = 1,
+    fresh: bool = False,
 ) -> dict:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = out_path.with_suffix(".manifest.jsonl")
+
+    # Resume: repositories already recorded as "ok" are not downloaded again.
+    # Records are appended, so an interrupted run never loses earlier work.
+    done_repos: set[str] = set()
+    if not fresh and manifest_path.exists():
+        for line in manifest_path.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("status") == "ok":
+                done_repos.add(entry.get("full_name", ""))
+    if fresh:
+        out_path.unlink(missing_ok=True)
+        manifest_path.unlink(missing_ok=True)
+    file_mode = "a" if out_path.exists() and out_path.stat().st_size else "w"
+    manifest_mode = "a" if manifest_path.exists() else "w"
     seen_repos: set[str] = set()
     seen_text: set[str] = set()
     summary: dict[str, Any] = {
         "repos": 0, "records": 0, "chars": 0, "skipped": 0, "errors": 0,
-        "workers": workers,
+        "already_done": len(done_repos), "workers": workers,
     }
     budget = max_repos
 
@@ -405,7 +463,7 @@ def collect(
         if budget <= 0:
             break
         name = repo["full_name"]
-        if name in seen_repos:
+        if name in seen_repos or name in done_repos:
             continue
         seen_repos.add(name)
         budget -= 1
@@ -419,8 +477,8 @@ def collect(
             continue
         plan.append(repo)
 
-    with open(out_path, "w", encoding="utf-8") as out, open(
-        manifest_path, "w", encoding="utf-8"
+    with open(out_path, file_mode, encoding="utf-8") as out, open(
+        manifest_path, manifest_mode, encoding="utf-8"
     ) as manifest:
 
         def skip(repo: dict, status: str, **extra: object) -> None:
@@ -467,6 +525,8 @@ def collect(
                 )
                 + "\n"
             )
+            out.flush()
+            manifest.flush()
             print(
                 f"  {repo['full_name']}: {len(kept)} records, {chars / 1e3:.0f}k chars",
                 flush=True,
@@ -487,9 +547,9 @@ def collect(
                 for repo in pending:
                     try:
                         records, digest, scanned = download_records(repo, token, max_repo_mb)
-                    except (urllib.error.URLError, ValueError, tarfile.TarError, OSError) as exc:
+                    except Exception as exc:  # one bad repo must not end the run
                         summary["errors"] += 1
-                        skip(repo, "error", error=str(exc))
+                        skip(repo, "error", error=f"{type(exc).__name__}: {exc}")
                         time.sleep(sleep)
                         continue
                     store(repo, records, digest, scanned)
@@ -506,9 +566,10 @@ def collect(
                         done += 1
                         try:
                             records, digest, scanned = future.result()
-                        except (urllib.error.URLError, ValueError, tarfile.TarError, OSError) as exc:
+                        except Exception as exc:  # one bad repo must not end the run
                             summary["errors"] += 1
-                            skip(repo, "error", error=str(exc))
+                            skip(repo, "error", error=f"{type(exc).__name__}: {exc}")
+                            print(f"  {repo['full_name']}: {type(exc).__name__}, skipped")
                             continue
                         store(repo, records, digest, scanned)
                         print(f"  [{done}/{len(pending)}] {repo['full_name']}", flush=True)
@@ -538,6 +599,11 @@ def main() -> None:
         help="GitHub token; defaults to $GITHUB_TOKEN or ~/.config/codeplan/env",
     )
     parser.add_argument("--dry-run", action="store_true", help="Only list repositories")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ignore an existing output/manifest and start over (default: resume)",
+    )
     parser.add_argument("--repos", default=None, help="Comma separated owner/name list")
     parser.add_argument(
         "--repos-file",
@@ -586,9 +652,10 @@ def main() -> None:
         min_size_kb=args.min_size_kb,
         min_records_per_repo=args.min_records_per_repo,
         workers=args.workers,
+        fresh=args.fresh,
     )
     print(json.dumps(summary, indent=2))
-    if summary["records"] == 0:
+    if summary["records"] == 0 and summary["already_done"] == 0:
         raise SystemExit(
             "No records collected. Check the token, the repository names and the "
             "connection before running the rest of the pipeline."

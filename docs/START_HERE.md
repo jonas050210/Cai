@@ -51,6 +51,11 @@ bash scripts/install_token.sh
 bash scripts/download_only.sh          # ~30-40 min, ~2 GB in data/raw/
 ```
 
+Abgebrochen? Einfach denselben Befehl nochmal — er überspringt fertige Repos
+(Manifest `data/raw/*.manifest.jsonl`), zeigt `metadata 25/473` beim Nachschlagen
+und wiederholt abgebrochene Downloads (3 Versuche). Netzfehler beenden den Lauf
+nicht mehr, ein einzelnes kaputtes Repo wird übersprungen.
+
 Danach `data/raw/` per USB-Stick in denselben Ordner auf den Trainings-PC
 kopieren und dort `bash scripts/build_corpus.sh` ausführen (überspringt den
 Download automatisch).
