@@ -9,6 +9,8 @@ from __future__ import annotations
 import math
 import random
 import shutil
+import signal
+import threading
 import time
 from pathlib import Path
 
@@ -80,6 +82,54 @@ def prune_checkpoints(out_dir: str | Path, keep: int) -> list[Path]:
     for path in removed:
         path.unlink(missing_ok=True)
     return removed
+
+
+class InterruptGuard:
+    """Turn Ctrl+C into "finish this step, save, exit" instead of a hard kill.
+
+    The first SIGINT sets ``requested``; the training loop finishes the current
+    optimizer step, writes ``last.pt`` and returns normally. A second SIGINT
+    raises ``KeyboardInterrupt`` immediately. SIGINT can only be handled in the
+    main thread, so in worker threads the guard stays passive.
+    """
+
+    SIGNALS = (signal.SIGINT, signal.SIGTERM)
+
+    def __init__(self) -> None:
+        self.requested = False
+        self.presses = 0
+        self._previous: dict[int, object] = {}
+        self._installed = False
+
+    def _handle(self, signum, frame) -> None:  # noqa: ARG002 - signal API
+        self.presses += 1
+        if self.presses >= 2:
+            raise KeyboardInterrupt
+        self.requested = True
+        label = "Ctrl+C" if signum == signal.SIGINT else "Termination signal"
+        print(
+            f"\n{label}: finishing this step, then saving (again to abort immediately)",
+            flush=True,
+        )
+
+    def install(self) -> "InterruptGuard":
+        if threading.current_thread() is not threading.main_thread():
+            return self
+        try:
+            for sig in self.SIGNALS:
+                self._previous[sig] = signal.signal(sig, self._handle)
+            self._installed = True
+        except (ValueError, OSError):  # not a signal-capable environment
+            self._installed = False
+        return self
+
+    def restore(self) -> None:
+        for sig, previous in self._previous.items():
+            try:
+                signal.signal(sig, previous)
+            except (ValueError, OSError, TypeError):
+                pass
+        self._installed = False
 
 
 class EarlyStopper:
@@ -161,9 +211,20 @@ def train_loop(
     log_path = out_dir / "log.jsonl"
     stopper = EarlyStopper(cfg.early_stop_patience)
     stopper.bad = bad_evals
+    if cfg.max_steps <= start_step:
+        print(f"Nothing to do: already at step {start_step} of {cfg.max_steps}.")
+        return {
+            "last_step": start_step - 1,
+            "best_val": best_val,
+            "bad_evals": bad_evals,
+            "interrupted": False,
+        }
+
     train_it = cycle(train_loader)
     model.train()
     stopped_early = False
+    interrupted = False
+    guard = InterruptGuard().install()
 
     tokens_per_step = cfg.batch_size * cfg.grad_accum * cfg.seq_len
     t0 = time.time()
@@ -265,10 +326,33 @@ def train_loop(
         if stopped_early:
             break
 
+        if guard.requested:
+            interrupted = True
+            save_checkpoint(
+                out_dir / "last.pt", raw_model(model), optimizer, scheduler, scaler,
+                step, cfg.to_dict(),
+                {"val_loss": best_val, "bad_evals": stopper.bad, "interrupted": True},
+            )
+            print(
+                f"Interrupted at step {step}. Saved {out_dir / 'last.pt'}.\n"
+                f"Continue with: codeplan-pretrain --config <config> --resume {out_dir / 'last.pt'}",
+                flush=True,
+            )
+            break
+
+    guard.restore()
+
     last_step = step if cfg.max_steps > start_step else start_step
-    save_checkpoint(
-        out_dir / "last.pt", raw_model(model), optimizer, scheduler, scaler,
-        last_step, cfg.to_dict(), {"val_loss": best_val, "bad_evals": stopper.bad},
-    )
-    print(f"Done. Checkpoints in {out_dir}")
-    return {"last_step": last_step, "best_val": best_val, "bad_evals": stopper.bad}
+    if not interrupted:  # the interrupt handler already wrote a resumable last.pt
+        save_checkpoint(
+            out_dir / "last.pt", raw_model(model), optimizer, scheduler, scaler,
+            last_step, cfg.to_dict(), {"val_loss": best_val, "bad_evals": stopper.bad},
+        )
+    if not interrupted:
+        print(f"Done. Checkpoints in {out_dir}")
+    return {
+        "last_step": last_step,
+        "best_val": best_val,
+        "bad_evals": stopper.bad,
+        "interrupted": interrupted,
+    }

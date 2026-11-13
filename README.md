@@ -159,6 +159,19 @@ keyword               55   10.8%    0.897      2.45
 Bezeichner sind der Engpass — Operatoren und Keywords sitzen. Genau das, was
 „Perplexity 15" verdeckt.
 
+## Training unterbrechen
+
+`Ctrl+C` rechnet den laufenden Step zu Ende, speichert `last.pt` (inkl. Optimizer
+und RNG) und beendet sich sauber. Derselbe Befehl nochmal gestartet macht weiter:
+
+```bash
+codeplan-pretrain --config configs/pretrain_100m_4060ti.json   # erster Start
+# ... Ctrl+C ...
+codeplan-pretrain --config configs/pretrain_100m_4060ti.json   # läuft weiter
+```
+
+`--fresh` startet bewusst von vorn. Gilt auch für `codeplan-sft`.
+
 ## Checkpoints mitteln
 
 ```bash

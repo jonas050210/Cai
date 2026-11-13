@@ -41,6 +41,31 @@ What "success" looks like:
 - Training loss falls from ~9.7 to ~7.0 within 100-200 steps.
 - Validation perplexity falls (16.8k -> ~1.2k on the pilot, CPU demo run).
 - `checkpoints/pretrain_pilot/last.pt` exists and `--resume` continues the step count.
+
+## Training unterbrechen und fortsetzen
+
+`Ctrl+C` (oder `kill <pid>`) beendet den Lauf **nicht hart**: der aktuelle
+Optimizer-Step wird fertig gerechnet, `last.pt` wird mit Optimizer, Scheduler,
+RNG und Step geschrieben, dann endet der Prozess mit Code 0.
+
+```
+Ctrl+C: finishing this step, then saving (again to abort immediately)
+Interrupted at step 77. Saved checkpoints/pretrain_100m/last.pt.
+```
+
+Zweites `Ctrl+C` bricht sofort ab (dann bis zu `save_every` Steps Verlust).
+
+**Fortsetzen: einfach denselben Befehl nochmal starten.**
+
+```
+Found checkpoints/pretrain_100m/last.pt: continuing from there (--fresh starts over)
+Resumed from ... at step 78 (best_val=3.4121)
+```
+
+- `--resume auto` ist dasselbe explizit, `--resume <pfad>` nimmt einen anderen Checkpoint.
+- `--fresh` ignoriert `last.pt` und startet bei 0 (überschreibt den Run).
+- Ist der Step-Stand schon `max_steps`, endet der Lauf sofort mit "Nothing to do".
+- Gilt genauso für `codeplan-sft`.
 - Per-domain perplexity differs by domain instead of being identical.
 
 Known limitation: 2.7 epochs means the model partly memorises the pilot corpus.

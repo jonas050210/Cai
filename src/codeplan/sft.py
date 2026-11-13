@@ -32,9 +32,24 @@ def main() -> None:
     parser.add_argument("--data", default=None, help="Override SFT JSONL path")
     parser.add_argument("--device", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="SFT checkpoint path, or 'auto' for <out_dir>/last.pt",
+    )
+    parser.add_argument("--fresh", action="store_true", help="Start over, ignore last.pt")
     args = parser.parse_args()
 
     cfg = load_train_config(args.config)
+    if args.resume:
+        cfg.resume = str(Path(cfg.out_dir) / "last.pt") if args.resume == "auto" else args.resume
+    elif args.fresh:
+        cfg.resume = None
+    else:
+        last = Path(cfg.out_dir) / "last.pt"
+        if last.exists() and not cfg.resume and not cfg.init_checkpoint:
+            cfg.resume = str(last)
+            print(f"Found {last}: continuing from there (--fresh starts over)")
     if args.init:
         cfg.init_checkpoint = args.init
     if args.data:

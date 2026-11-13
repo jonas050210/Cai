@@ -28,7 +28,16 @@ from .utils import (
 def main() -> None:
     parser = argparse.ArgumentParser(description="Pretrain CodePlan-LM from scratch.")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--resume", default=None, help="Override resume checkpoint")
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Checkpoint path, or 'auto' for <out_dir>/last.pt (the default when it exists)",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ignore an existing last.pt and start from step 0 (overwrites the run)",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument("--precision", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
@@ -39,7 +48,14 @@ def main() -> None:
 
     cfg = load_train_config(args.config)
     if args.resume:
-        cfg.resume = args.resume
+        cfg.resume = str(Path(cfg.out_dir) / "last.pt") if args.resume == "auto" else args.resume
+    elif args.fresh:
+        cfg.resume = None
+    else:
+        last = Path(cfg.out_dir) / "last.pt"
+        if last.exists() and not cfg.resume:
+            cfg.resume = str(last)
+            print(f"Found {last}: continuing from there (--fresh starts over)")
     if args.device:
         cfg.device = args.device
     if args.precision:
