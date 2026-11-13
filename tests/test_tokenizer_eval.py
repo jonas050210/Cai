@@ -39,10 +39,18 @@ def test_analyse_and_recommend(tmp_path):
     assert "recommended vocab" in format_table(report)
 
 
-def test_recommend_prefers_small_vocab_within_tolerance():
-    results = [
+def test_recommend_weighs_vocab_against_compression():
+    # Similar compression: the smaller vocabulary wins because it is cheaper.
+    close = [
         {"vocab_size": 16000, "overall": {"tokens_per_char": 0.26}},
         {"vocab_size": 32000, "overall": {"tokens_per_char": 0.25}},
     ]
-    assert recommend(results, tolerance=0.05)["vocab_size"] == 16000
-    assert recommend(results, tolerance=0.01)["vocab_size"] == 32000
+    assert recommend(close)["vocab_size"] == 16000
+
+    # Much better compression: the bigger vocabulary pays for its embeddings.
+    clear = [
+        {"vocab_size": 16000, "overall": {"tokens_per_char": 0.35}},
+        {"vocab_size": 32000, "overall": {"tokens_per_char": 0.20}},
+    ]
+    assert recommend(clear)["vocab_size"] == 32000
+    assert "cost_index" in recommend(clear)

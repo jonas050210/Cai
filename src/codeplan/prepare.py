@@ -15,6 +15,8 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
+from .dedup import NearDuplicateFilter
+
 ALLOWED_LANGS = {"de", "en"}
 ALLOWED_DOMAINS = {"code", "planning", "general"}
 DISALLOWED_SCRIPTS = {
@@ -138,6 +140,7 @@ def prepare(
     test_ratio: float = 0.01,
     max_bad_script_ratio: float = 0.02,
     require_license: bool = False,
+    near_dedup: NearDuplicateFilter | None = None,
 ) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
@@ -180,6 +183,9 @@ def prepare(
             h = record_hash(text)
             if h in seen:
                 stats["duplicate"] += 1
+                continue
+            if near_dedup is not None and near_dedup.is_duplicate(text):
+                stats["near_duplicate"] += 1
                 continue
             seen.add(h)
             out = {
@@ -228,11 +234,31 @@ def main() -> None:
     parser.add_argument("--test-ratio", type=float, default=0.01)
     parser.add_argument("--max-bad-script-ratio", type=float, default=0.02)
     parser.add_argument("--require-license", action="store_true")
+    parser.add_argument(
+        "--near-dedup",
+        action="store_true",
+        help="Also drop near-duplicates (MinHash + LSH, Jaccard threshold)",
+    )
+    parser.add_argument("--near-dedup-threshold", type=float, default=0.8)
+    parser.add_argument("--near-dedup-max-chars", type=int, default=50_000)
+    parser.add_argument("--near-dedup-perm", type=int, default=128)
+    parser.add_argument("--near-dedup-bands", type=int, default=32)
     args = parser.parse_args()
+    near_dedup = None
+    if args.near_dedup:
+        near_dedup = NearDuplicateFilter(
+            threshold=args.near_dedup_threshold,
+            num_perm=args.near_dedup_perm,
+            bands=args.near_dedup_bands,
+            max_chars=args.near_dedup_max_chars,
+        )
     stats = prepare(
         Path(args.input), Path(args.out_dir), args.min_chars, args.max_chars,
         args.val_ratio, args.test_ratio, args.max_bad_script_ratio, args.require_license,
+        near_dedup=near_dedup,
     )
+    if near_dedup is not None:
+        stats["near_dedup"] = near_dedup.stats()
     print(json.dumps(stats, indent=2, ensure_ascii=False))
 
 

@@ -33,7 +33,7 @@
     "general": 0.01
   },
   "model": {
-    "vocab_size": 32000,
+    "vocab_size": 16000,
     "max_seq_len": 2048,
     "d_model": 512,
     "n_layers": 10,

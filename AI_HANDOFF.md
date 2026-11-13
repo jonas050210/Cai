@@ -19,8 +19,9 @@ Implemented:
 - Decoder-only Transformer: RMSNorm, RoPE, SwiGLU, tied embeddings, KV cache generation.
 - Byte-level BPE tokenizer trained from scratch (with a byte-level minimum-vocabulary guard).
 - Tokenizer fertility analysis and vocabulary recommendation (`codeplan-fertility`).
-- GitHub collection with a license whitelist, path/size filters and a checksum manifest.
-- JSONL ingestion, DE/EN filtering (comments/docstrings for code), dedup, deterministic split.
+- GitHub collection with a license whitelist, streaming size cap and a checksum manifest.
+- JSONL ingestion, DE/EN filtering (comments/docstrings for code), exact dedup,
+  MinHash/LSH near-dedup, deterministic split, corpus statistics + token budget check.
 - Packed binary pretraining datasets with domain mixture sampling.
 - Pretraining loop with bf16/fp16, gradient accumulation, cosine LR, checkpointing,
   checkpoint retention and early stopping; best/last checkpoints survive resumes.
@@ -30,10 +31,14 @@ Implemented:
 - Coding benchmark with unit-test execution in a limited subprocess (pass@k, language compliance).
 - safetensors export plus `load_exported()` round-trip.
 - FastAPI inference server with JSON API and a minimal web UI.
-- Tiny smoke config and synthetic seed data; 39 unit tests; CI (lint, tests, smoke).
+- Preflight doctor: environment, config validation, tokenizer/data consistency,
+  epoch check, disk estimate, and a measured throughput/VRAM benchmark.
+- Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
+- Tiny smoke config and synthetic seed data; 58 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
-- Large-scale data collection/curation (the collector exists, the corpus does not).
+- Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants
+  ~800M. `codeplan-doctor` refuses the full run until the data exists.
 - Hard language enforcement at decoding time.
 - RL / preference optimization.
 - Distributed training.
@@ -52,9 +57,13 @@ pytest -q
 
 Real pipeline:
 ```bash
-codeplan-collect --out data/raw/github.jsonl --max-repos 200 --languages python,typescript
-codeplan-prepare --input data/raw/github.jsonl --out-dir data/filtered --require-license
-codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 16000,32000
+export GITHUB_TOKEN=...
+bash scripts/pilot.sh                      # reproducible 12M-token pilot + preflight
+codeplan-prepare --input data/raw/github.jsonl --out-dir data/filtered \
+  --require-license --near-dedup
+codeplan-stats --input data/filtered/train.jsonl --target-tokens 1000000000
+codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 8000,16000,32000
+codeplan-doctor --config configs/pretrain_50m_4060ti.json --bench-steps 20
 codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 16000
 codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json --out-dir data/packed
 bash scripts/train_session.sh --config configs/pretrain_50m_4060ti.json --session-steps 800
@@ -69,10 +78,10 @@ codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 80
 ## Model config
 
 50M target config:
-- vocab: 32000 in the config files, but always overridden by the trained tokenizer's
-  actual size at runtime. **Run `codeplan-fertility` before deciding**: at ~48M
-  parameters a 32k vocabulary spends ~16M parameters (a third of the model) on
-  embeddings, so 16k is often the better trade.
+- vocab: **16000** (decided with `codeplan-fertility`, see `docs/DECISIONS.md`;
+  a 32k vocabulary spends a third of a 48M model on embeddings and costs ~13% more
+  compute per character at only 6% better compression).
+- The runtime always overrides `model.vocab_size` with the tokenizer's actual size.
 - context: 2048
 - d_model: 512
 - layers: 10
@@ -81,7 +90,7 @@ codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 80
 - tied embeddings
 - gradient checkpointing
 
-Approximate parameter count: ~48.5M with a 32k vocabulary.
+Approximate parameter count: ~40.3M with a 16k vocabulary (48.5M with 32k).
 
 ## Data format
 
@@ -125,9 +134,10 @@ Benchmark task JSONL:
 
 ## Good next tasks
 
-1. Run the collector at scale and audit the manifest (licenses, per-repo record counts).
-2. Improve near-duplicate detection (MinHash/SimHash) instead of exact hashing only.
-3. Add coding eval tasks with real sandboxing (container) and pass@k reporting.
-4. Tokenizer fertility analysis on the real corpus (DE vs EN vs code).
-5. Add a 150M config only after 50M training is stable.
+1. Collect ~800M tokens (curated repo lists beat star-ranked search) and audit the
+   manifest; the current pilot has 12M.
+2. Add German and planning/spec content: the pilot is 97% English, 11% planning.
+3. Real sandboxing (containers) for `codeplan-bench`, plus more tasks.
+4. Try lr 2e-4 vs 3e-4 for the first 1,000 steps and compare val loss.
+5. Add a 150M config only after the 40M/50M baseline is stable.
 6. Quantized inference and a streaming endpoint.

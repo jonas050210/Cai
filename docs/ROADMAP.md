@@ -19,7 +19,9 @@
 - [x] Code-aware language filtering (comments/docstrings instead of whole file)
 - [x] Tokenizer fertility analysis (`codeplan-fertility`)
 - [ ] Collect the actual DE/EN corpus at scale
-- [ ] Near-duplicate detection (MinHash/SimHash)
+- [x] Near-duplicate detection (MinHash + LSH, `--near-dedup`)
+- [x] Corpus statistics and token-budget check (`codeplan-stats`)
+- [x] Pilot corpus with a reproducible script (`scripts/pilot.sh`)
 - [ ] Manual license audit of the manifest
 
 ## Phase 2: Training
@@ -28,7 +30,8 @@
 - [x] Early stopping (`early_stop_patience`)
 - [x] Resumable short sessions + GPU thermal guard
 - [x] Validation loss restored on resume
-- [ ] Train 50M baseline
+- [x] Preflight checks with measured throughput/VRAM (`codeplan-doctor`)
+- [ ] Train 50M baseline (blocked on data: 12M of ~800M tokens)
 - [ ] Track sample quality over time
 - [ ] Add learning-rate finder
 - [ ] Try 1024 vs 2048 context

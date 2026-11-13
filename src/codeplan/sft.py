@@ -37,6 +37,9 @@ def main() -> None:
         cfg.max_steps = args.max_steps
     if not cfg.sft_data:
         raise ValueError("SFT config needs sft_data or --data")
+    problems = cfg.validate()
+    if problems:
+        raise SystemExit("Invalid config:\n- " + "\n- ".join(problems))
 
     set_seed(cfg.seed)
     device = get_device(cfg.device)

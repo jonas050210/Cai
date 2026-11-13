@@ -1,4 +1,4 @@
-.PHONY: setup smoke test lint ci collect prepare tokenizer fertility pack pretrain session sft eval bench export serve
+.PHONY: setup smoke test lint ci pilot collect stats prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
 
 setup:
 	pip install -e ".[dev]"
@@ -14,20 +14,29 @@ lint:
 
 ci: lint test
 
+pilot:
+	bash scripts/pilot.sh
+
 collect:
 	codeplan-collect --out data/raw/github.jsonl --max-repos 200
 
+stats:
+	codeplan-stats --input data/raw/github.jsonl --target-tokens 1000000000
+
 prepare:
-	codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license
+	codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license --near-dedup
 
 tokenizer:
-	codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 32000
+	codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 16000
 
 fertility:
-	codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 16000,32000 --out artifacts/fertility.json
+	codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 8000,16000,32000 --out artifacts/fertility.json
 
 pack:
 	codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json --out-dir data/packed
+
+doctor:
+	codeplan-doctor --config configs/pretrain_50m_4060ti.json --bench-steps 20
 
 pretrain:
 	codeplan-pretrain --config configs/pretrain_50m_4060ti.json

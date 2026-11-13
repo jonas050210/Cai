@@ -67,16 +67,44 @@ def measure(tokenizer: CodePlanTokenizer, records: Iterable[dict]) -> dict:
     return {"overall": overall, "groups": groups}
 
 
-def recommend(results: list[dict], tolerance: float = 0.05) -> dict:
-    """Smallest vocabulary whose tokens/char stays within ``tolerance`` of the best."""
-    best = min(r["overall"]["tokens_per_char"] for r in results)
-    for r in sorted(results, key=lambda x: x["vocab_size"]):
-        if r["overall"]["tokens_per_char"] <= best * (1.0 + tolerance):
+def non_embedding_params(d_model: int, n_layers: int, intermediate_size: int) -> int:
+    """Transformer parameters without the embedding matrix."""
+    per_layer = 4 * d_model**2 + 3 * d_model * intermediate_size
+    return n_layers * per_layer + d_model
+
+
+def recommend(
+    results: list[dict],
+    tolerance: float = 0.05,
+    d_model: int = 512,
+    n_layers: int = 10,
+    intermediate_size: int = 1408,
+) -> dict:
+    """Pick the vocabulary with the lowest compute cost for the same text.
+
+    Cost per character is proportional to ``total_params * tokens_per_char``:
+    more tokens per character means more forward passes over the whole model,
+    while a bigger vocabulary means more parameters on every one of them.
+    Comparing tokens/char alone always favours the largest vocabulary.
+    """
+    base = non_embedding_params(d_model, n_layers, intermediate_size)
+    for result in results:
+        total_params = base + result["vocab_size"] * d_model
+        result["total_params"] = total_params
+        result["cost_index"] = total_params * result["overall"]["tokens_per_char"]
+
+    best = min(result["cost_index"] for result in results)
+    for result in sorted(results, key=lambda x: x["vocab_size"]):
+        if result["cost_index"] <= best * (1.0 + tolerance):
             return {
-                "vocab_size": r["vocab_size"],
-                "rule": f"smallest vocab within {tolerance:.0%} of best tokens/char",
-                "tokens_per_char": r["overall"]["tokens_per_char"],
-                "best_tokens_per_char": best,
+                "vocab_size": result["vocab_size"],
+                "rule": (
+                    f"smallest vocab within {tolerance:.0%} of the lowest"
+                    " params x tokens/char cost"
+                ),
+                "cost_index": result["cost_index"],
+                "best_cost_index": best,
+                "tokens_per_char": result["overall"]["tokens_per_char"],
             }
     return {"vocab_size": max(r["vocab_size"] for r in results), "rule": "fallback"}
 
@@ -88,6 +116,8 @@ def analyse(
     sample_records: int = 5000,
     eval_records: int = 2000,
     min_frequency: int = 2,
+    n_layers: int = 10,
+    intermediate_size: int = 1408,
 ) -> dict:
     if sample_records <= 0 or eval_records <= 0:
         raise ValueError("sample_records and eval_records must be positive")
@@ -117,18 +147,22 @@ def analyse(
     return {
         "file": str(train_path),
         "d_model": d_model,
+        "non_embedding_params": non_embedding_params(d_model, n_layers, intermediate_size),
         "results": results,
-        "recommendation": recommend(results),
+        "recommendation": recommend(results, d_model=d_model, n_layers=n_layers,
+                                    intermediate_size=intermediate_size),
     }
 
 
 def format_table(report: dict) -> str:
-    lines = ["vocab   tok/char  char/tok  tok/word  emb params"]
+    lines = ["vocab   tok/char  char/tok  tok/word  emb params   total params   cost index"]
     for r in report["results"]:
         o = r["overall"]
         lines.append(
             f"{r['vocab_size']:>6}  {o['tokens_per_char']:8.3f}  {o['chars_per_token']:8.2f}"
             f"  {o['tokens_per_word']:8.2f}  {r['embedding_params'] / 1e6:8.2f}M"
+            f"  {r.get('total_params', 0) / 1e6:11.2f}M"
+            f"  {r.get('cost_index', 0) / 1e6:11.2f}M"
         )
     rec = report["recommendation"]
     lines.append(
@@ -145,6 +179,8 @@ def main() -> None:
     parser.add_argument("--sample-records", type=int, default=5000)
     parser.add_argument("--eval-records", type=int, default=2000)
     parser.add_argument("--min-frequency", type=int, default=2)
+    parser.add_argument("--n-layers", type=int, default=10, help="For the parameter cost")
+    parser.add_argument("--intermediate-size", type=int, default=1408)
     parser.add_argument("--out", default=None, help="Optional JSON report path")
     args = parser.parse_args()
 
@@ -156,6 +192,8 @@ def main() -> None:
         sample_records=args.sample_records,
         eval_records=args.eval_records,
         min_frequency=args.min_frequency,
+        n_layers=args.n_layers,
+        intermediate_size=args.intermediate_size,
     )
     print(format_table(report))
     for result in report["results"]:

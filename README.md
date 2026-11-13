@@ -46,8 +46,11 @@ codeplan-collect --out data/raw/github.jsonl --max-repos 200 --languages python,
 # 1. Eigene lokale Dateien einlesen
 codeplan-ingest --input /pfad/zu/deinen/dateien --out data/raw/my_data.jsonl --license "MIT" --source "my-repos"
 
-# 2. Filtern: DE/EN, Deduplizierung, Split
-codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license
+# 2. Filtern: DE/EN, exakte + Near-Duplikate, Split
+codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license --near-dedup
+
+# 2b. Prüfen, ob die Datenmenge für den geplanten Lauf reicht
+codeplan-stats --input data/filtered/train.jsonl --target-tokens 1000000000
 
 # 3. Vokabular-Größe belegen (Tokens/Zeichen pro Domäne und Sprache)
 codeplan-fertility --train data/filtered/train.jsonl --vocab-sizes 16000,32000 --out artifacts/fertility.json
@@ -58,7 +61,10 @@ codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.j
 # 4. Daten packen
 codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json --out-dir data/packed
 
-# 5. Pretraining (ein Lauf oder in kurzen Sessions mit Thermal-Schutz)
+# 5. Vortest: Umgebung, Daten, VRAM und Tempo prüfen (vor jedem langen Lauf)
+codeplan-doctor --config configs/pretrain_50m_4060ti.json --bench-steps 20
+
+# 6. Pretraining (ein Lauf oder in kurzen Sessions mit Thermal-Schutz)
 codeplan-pretrain --config configs/pretrain_50m_4060ti.json
 # oder: bash scripts/train_session.sh --session-steps 800 --max-total 20000
 
@@ -82,6 +88,8 @@ codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 80
 | Befehl | Zweck |
 |---|---|
 | `codeplan-collect` | GitHub-Repos nach Lizenz-Whitelist laden (+ Manifest mit Checksums) |
+| `codeplan-stats` | Korpusgröße, Domänen-/Sprachmix, Duplikate, Token-Budget |
+| `codeplan-doctor` | Preflight: Umgebung, Config, Daten, VRAM, Durchsatz, ETA |
 | `codeplan-ingest` | Lokale Dateien zu JSONL |
 | `codeplan-prepare` | DE/EN-Filter, Code-Kommentar-Filter, Dedup, Split |
 | `codeplan-fertility` | Tokenizer-Kennzahlen, Vokabular-Empfehlung |
@@ -112,9 +120,35 @@ src/codeplan/tokenizer_eval.py     # Tokenizer-Fertility / Vokabular-Entscheidun
 src/codeplan/bench.py              # Coding-Benchmark mit Testausführung
 src/codeplan/export.py             # safetensors-Export
 src/codeplan/server.py             # FastAPI-Inferenzserver
+src/codeplan/dedup.py              # MinHash + LSH Near-Duplikate
+src/codeplan/stats.py              # Korpus-Statistik, Token-Budget
+src/codeplan/doctor.py             # Preflight-Checks + Durchsatzmessung
+scripts/pilot.sh                   # kompletter Pilot-Lauf, reproduzierbar
 scripts/train_session.sh           # Training in Sessions + Thermal-Guard
 data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
+```
+
+## Erster echter Test
+
+Zwei Stufen, Details in `docs/RUNBOOK.md`:
+
+```bash
+export GITHUB_TOKEN=...     # 60 -> 5000 Requests/Stunde
+bash scripts/pilot.sh       # ~12M Tokens echte Daten, 16k Tokenizer, Preflight
+codeplan-pretrain --config configs/pretrain_pilot.json
+```
+
+Das ist ein **Pipeline-Test** (Loss fällt, Checkpoints, Resume, Eval), kein
+Qualitätslauf. Für ein brauchbares Modell fehlen ~60x mehr Daten — siehe
+`docs/DATA_REPORT.md` und `docs/DECISIONS.md`.
+
+## Weitere Dokumente
+
+```text
+docs/RUNBOOK.md     # Schritt-für-Schritt bis zum ersten echten Lauf
+docs/DECISIONS.md   # Vokabular, Token-Budget, Dedup, LR - mit Messwerten
+docs/DATA_REPORT.md # Pilot-Korpus: Zahlen, Lizenzmix, Loss-Kurve
 ```
 
 ## Grenzen
