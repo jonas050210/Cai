@@ -25,3 +25,37 @@ def test_filter_language_and_dedup(tmp_path):
     assert stats["duplicate"] == 1
     assert stats["bad_lang"] >= 1
     assert stats["too_short"] == 1
+
+
+def test_code_without_prose_is_kept(tmp_path):
+    code = "def compute(x, y):\n    result = x * 2 + y\n    return result\n\n" * 5
+    records = [{"text": code, "lang": "unknown", "domain": "code", "license": "MIT"}]
+    inp = tmp_path / "in.jsonl"
+    write_jsonl(inp, records)
+    stats = prepare(inp, tmp_path / "out")
+    assert stats["kept_total"] == 1
+    assert stats["lang_source_code-default"] == 1
+
+
+def test_code_with_foreign_comments_is_rejected(tmp_path):
+    code = "# Calcule la somme des nombres et renvoie le resultat\n" * 4
+    records = [{"text": code + "def f(x):\n    return x\n" * 4, "lang": "unknown",
+                "domain": "code", "license": "MIT"}]
+    inp = tmp_path / "in.jsonl"
+    write_jsonl(inp, records)
+    stats = prepare(inp, tmp_path / "out")
+    assert stats["kept_total"] == 0
+    assert stats["bad_lang"] == 1
+
+
+def test_german_comments_in_code_are_detected(tmp_path):
+    code = (
+        "# Berechne die Summe der Zahlen und gib das Ergebnis zurueck\n"
+        "def summe(werte):\n    return sum(werte)\n"
+    ) * 3
+    records = [{"text": code, "lang": None, "domain": "code", "license": "MIT"}]
+    inp = tmp_path / "in.jsonl"
+    write_jsonl(inp, records)
+    stats = prepare(inp, tmp_path / "out")
+    assert stats["kept_total"] == 1
+    assert stats["lang_de"] == 1

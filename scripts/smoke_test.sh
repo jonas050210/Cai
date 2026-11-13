@@ -34,6 +34,42 @@ codeplan-eval \
   --device cpu \
   --precision fp32
 
+codeplan-eval \
+  --checkpoint artifacts/smoke/sft/last.pt \
+  --data-dir artifacts/smoke/packed \
+  --split val \
+  --seq-len 64 \
+  --batch-size 2 \
+  --max-batches 2 \
+  --device cpu \
+  --precision fp32 \
+  --per-domain
+
+codeplan-fertility \
+  --train artifacts/smoke/filtered/train.jsonl \
+  --vocab-sizes 512,1024 \
+  --d-model 64 \
+  --sample-records 40 \
+  --eval-records 10 \
+  --out artifacts/smoke/fertility.json
+
+codeplan-bench \
+  --checkpoint artifacts/smoke/sft/last.pt \
+  --tasks data/bench/code_tasks.jsonl \
+  --limit 1 \
+  --max-new-tokens 32 \
+  --timeout 5 \
+  --device cpu \
+  --allow-exec
+
+if python -c "import safetensors" >/dev/null 2>&1; then
+  codeplan-export \
+    --checkpoint artifacts/smoke/sft/last.pt \
+    --out artifacts/smoke/model.safetensors
+else
+  echo "safetensors not installed; skipping export check"
+fi
+
 codeplan-generate \
   --checkpoint artifacts/smoke/sft/last.pt \
   --prompt "Write a Python function add(a, b)." \

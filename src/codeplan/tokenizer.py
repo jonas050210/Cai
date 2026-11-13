@@ -117,12 +117,26 @@ class CodePlanTokenizer:
         return input_ids, labels
 
 
+MIN_VOCAB_SIZE = 256 + len(SPECIAL_TOKENS)  # byte-level alphabet + special tokens
+
+
 def train_tokenizer(
     texts: Iterable[str],
     vocab_size: int = 32000,
     min_frequency: int = 2,
     out_path: str | Path = "artifacts/tokenizer.json",
 ) -> CodePlanTokenizer:
+    """Train a byte-level BPE tokenizer.
+
+    ``vocab_size`` must be at least :data:`MIN_VOCAB_SIZE` (256 byte tokens plus
+    the 18 special tokens), otherwise the trainer cannot honour the request.
+    """
+    if vocab_size < MIN_VOCAB_SIZE:
+        raise ValueError(
+            f"vocab_size={vocab_size} is impossible for byte-level BPE: "
+            f"at least {MIN_VOCAB_SIZE} tokens are required "
+            f"(256 bytes + {len(SPECIAL_TOKENS)} special tokens)"
+        )
     tokenizer = Tokenizer(models.BPE(unk_token=UNK_TOKEN))
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     tokenizer.decoder = decoders.ByteLevel()

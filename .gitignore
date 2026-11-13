@@ -1,0 +1,50 @@
+# --- Python / environments ---
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Tooling caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Datasets (never commit data) ---
+data/raw/
+data/filtered/
+data/packed/
+data/collect/
+data/sft/
+*.bin
+*.bin.index.json
+
+# --- Model artifacts ---
+artifacts/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.gguf
+
+# --- Logs / local state ---
+*.log
+log.jsonl
+events.out.tfevents.*
+.env
+.env.*
+
+# --- Editor / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp

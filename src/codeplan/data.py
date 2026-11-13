@@ -9,7 +9,7 @@ from typing import Iterator
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 
 from .tokenizer import DEFAULT_SYSTEM_PROMPT, CodePlanTokenizer
 
@@ -201,3 +201,23 @@ def iter_jsonl(path: str | Path) -> Iterator[dict]:
             line = line.strip()
             if line:
                 yield json.loads(line)
+
+
+def split_sft_dataset(
+    ds: Dataset, val_ratio: float, seed: int = 1337
+) -> tuple[Dataset, Dataset | None]:
+    """Deterministic train/val split of an SFT dataset.
+
+    Returns ``(train, val)``; ``val`` is ``None`` when the ratio is 0 or the
+    dataset is too small to hold out at least one example.
+    """
+    n = len(ds)
+    if val_ratio <= 0 or n < 2:
+        return ds, None
+    n_val = max(1, int(round(n * val_ratio)))
+    n_val = min(n_val, n - 1)
+    order = list(range(n))
+    random.Random(seed).shuffle(order)
+    val_idx = sorted(order[:n_val])
+    train_idx = sorted(order[n_val:])
+    return Subset(ds, train_idx), Subset(ds, val_idx)

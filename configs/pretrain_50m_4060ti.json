@@ -7,12 +7,12 @@
   "grad_accum": 16,
   "max_steps": 20000,
   "lr": 0.0003,
-  "min_lr": 0.00003,
+  "min_lr": 3e-05,
   "warmup_steps": 500,
   "weight_decay": 0.1,
   "beta1": 0.9,
   "beta2": 0.95,
-  "eps": 1e-8,
+  "eps": 1e-08,
   "grad_clip": 1.0,
   "device": "auto",
   "precision": "bf16",
@@ -43,5 +43,8 @@
     "rope_theta": 10000.0,
     "tie_embeddings": true,
     "gradient_checkpointing": true
-  }
+  },
+  "keep_last_checkpoints": 2,
+  "early_stop_patience": 6,
+  "sft_val_ratio": 0.05
 }

@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .config import load_train_config, save_json
-from .data import SFTDataset, sft_collate
+from .data import SFTDataset, sft_collate, split_sft_dataset
 from .model import CodePlanLM
 from .tokenizer import CodePlanTokenizer
 from .trainer import build_optimizer, lr_lambda, train_loop
@@ -58,27 +58,46 @@ def main() -> None:
     scaler = torch.amp.GradScaler("cuda", enabled=use_scaler) if device.type == "cuda" else None
 
     start_step = 0
+    best_val = float("inf")
+    bad_evals = 0
     if cfg.resume:
         payload = load_checkpoint(cfg.resume, model, optimizer, scheduler, scaler, device, restore_rng=True)
         start_step = int(payload["step"]) + 1
+        best_val = float(payload.get("val_loss") or float("inf"))
+        bad_evals = int(payload.get("bad_evals") or 0)
 
     ds = SFTDataset(cfg.sft_data, tokenizer, max_len=cfg.sft_max_len)
+    train_ds, val_ds = split_sft_dataset(ds, cfg.sft_val_ratio, cfg.seed)
+    collate = partial(sft_collate, pad_id=tokenizer.pad_id)
     loader = DataLoader(
-        ds,
+        train_ds,
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
-        collate_fn=partial(sft_collate, pad_id=tokenizer.pad_id),
+        collate_fn=collate,
         pin_memory=(device.type == "cuda"),
         drop_last=True,
     )
     if len(loader) == 0:
         raise ValueError("SFT dataset smaller than batch_size; reduce batch_size.")
 
+    val_loader = None
+    if val_ds is not None and len(val_ds) > 0:
+        val_loader = DataLoader(
+            val_ds,
+            batch_size=cfg.batch_size,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=collate,
+            pin_memory=(device.type == "cuda"),
+        )
+    print(f"SFT examples: {len(train_ds)} train / {0 if val_ds is None else len(val_ds)} val")
+
     save_json(Path(cfg.out_dir) / "config.json", cfg.to_dict())
     train_loop(
         model, loader, cfg, device, dtype, optimizer, scheduler, scaler,
-        start_step=start_step, val_loader=None, mode="sft",
+        start_step=start_step, val_loader=val_loader, mode="sft",
+        best_val=best_val, bad_evals=bad_evals,
     )
 
 

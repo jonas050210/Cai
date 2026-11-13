@@ -28,4 +28,5 @@ These are ignored by `.gitignore`.
 
 ## GitHub Actions
 
-The CI workflow runs lint and unit tests on CPU. It does not train the real model.
+`ci.yml` runs three jobs on CPU: `ruff check`, `pytest` (Python 3.10 + 3.11) and the
+full `scripts/smoke_test.sh` pipeline. It does not train the real model.

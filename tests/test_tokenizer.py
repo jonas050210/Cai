@@ -1,3 +1,5 @@
+import pytest
+
 from codeplan.tokenizer import CodePlanTokenizer, train_tokenizer
 
 
@@ -24,3 +26,9 @@ def test_sft_labels_mask_prompt(tmp_path):
     assert len(ids) == len(labels)
     assert labels[0] == -100
     assert any(lab != -100 for lab in labels)
+
+
+def test_vocab_size_below_byte_level_minimum_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="impossible for byte-level BPE"):
+        train_tokenizer(["hello world"] * 3, vocab_size=128, min_frequency=1,
+                        out_path=tmp_path / "tok.json")

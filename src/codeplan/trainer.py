@@ -1,4 +1,8 @@
-"""Shared training loop for pretraining and SFT."""
+"""Trainer pieces shared by pretraining and SFT.
+
+Besides the loop itself this module holds small, testable helpers for checkpoint
+retention and early stopping.
+"""
 
 from __future__ import annotations
 
@@ -67,6 +71,35 @@ def raw_model(model: torch.nn.Module) -> torch.nn.Module:
     return getattr(model, "_orig_mod", model)
 
 
+def prune_checkpoints(out_dir: str | Path, keep: int) -> list[Path]:
+    """Keep only the newest ``keep`` step_*.pt files. ``keep <= 0`` disables pruning."""
+    if keep <= 0:
+        return []
+    files = sorted(Path(out_dir).glob("step_*.pt"))
+    removed = files[:-keep] if len(files) > keep else []
+    for path in removed:
+        path.unlink(missing_ok=True)
+    return removed
+
+
+class EarlyStopper:
+    """Counts non-improving validations."""
+
+    def __init__(self, patience: int = 0):
+        self.patience = patience
+        self.bad = 0
+
+    def update(self, val_loss: float, best_val: float) -> tuple[bool, float]:
+        """Return ``(should_stop, best_val)``."""
+        if val_loss < best_val:
+            self.bad = 0
+            return False, val_loss
+        self.bad += 1
+        if self.patience > 0 and self.bad >= self.patience:
+            return True, best_val
+        return False, best_val
+
+
 @torch.no_grad()
 def evaluate_packed(model, val_loader, device, dtype, max_batches: int) -> float:
     model.eval()
@@ -82,6 +115,32 @@ def evaluate_packed(model, val_loader, device, dtype, max_batches: int) -> float
     return sum(losses) / max(1, len(losses))
 
 
+@torch.no_grad()
+def evaluate_sft(model, val_loader, device, dtype, max_batches: int) -> float:
+    """Validation loss for SFT batches (input_ids, labels, attention_mask)."""
+    model.eval()
+    losses = []
+    it = cycle(val_loader)
+    for _ in range(max_batches):
+        x, labels, attention_mask = next(it)
+        x = x.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+        attention_mask = attention_mask.to(device, non_blocking=True)
+        with autocast_context(device, dtype):
+            _, loss, _ = model(x, labels=labels, attention_mask=attention_mask)
+        losses.append(loss.item())
+    model.train()
+    return sum(losses) / max(1, len(losses))
+
+
+def evaluate(
+    mode: str, model, val_loader, device, dtype, max_batches: int
+) -> float:
+    if mode == "sft":
+        return evaluate_sft(model, val_loader, device, dtype, max_batches)
+    return evaluate_packed(model, val_loader, device, dtype, max_batches)
+
+
 def train_loop(
     model: torch.nn.Module,
     train_loader: DataLoader,
@@ -94,16 +153,21 @@ def train_loop(
     start_step: int = 0,
     val_loader: DataLoader | None = None,
     mode: str = "pretrain",
-) -> None:
+    best_val: float = float("inf"),
+    bad_evals: int = 0,
+) -> dict:
     out_dir = Path(cfg.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     log_path = out_dir / "log.jsonl"
-    best_val = float("inf")
+    stopper = EarlyStopper(cfg.early_stop_patience)
+    stopper.bad = bad_evals
     train_it = cycle(train_loader)
     model.train()
+    stopped_early = False
 
     tokens_per_step = cfg.batch_size * cfg.grad_accum * cfg.seq_len
     t0 = time.time()
+    step = start_step - 1
 
     for step in range(start_step, cfg.max_steps):
         optimizer.zero_grad(set_to_none=True)
@@ -162,32 +226,43 @@ def train_loop(
             )
             t0 = time.time()
 
-        if val_loader is not None and (step % cfg.eval_every == 0 or step == cfg.max_steps - 1):
-            val_loss = evaluate_packed(model, val_loader, device, dtype, cfg.eval_iters)
+        if val_loader is not None and (
+            step % cfg.eval_every == 0 or step == cfg.max_steps - 1
+        ):
+            val_loss = evaluate(mode, model, val_loader, device, dtype, cfg.eval_iters)
             ppl = math.exp(min(val_loss, 20))
             append_jsonl(log_path, {"step": step, "val_loss": val_loss, "val_ppl": ppl})
             print(f"step {step:6d} | val_loss {val_loss:.4f} | val_ppl {ppl:.2f}", flush=True)
-            if val_loss < best_val:
-                best_val = val_loss
+            should_stop, best_val = stopper.update(val_loss, best_val)
+            if val_loss <= best_val:
                 save_checkpoint(
                     out_dir / "best.pt", raw_model(model), optimizer, scheduler, scaler,
-                    step, cfg.to_dict(), {"val_loss": val_loss},
+                    step, cfg.to_dict(), {"val_loss": val_loss, "bad_evals": stopper.bad},
                 )
+            if should_stop:
+                print(f"Early stopping at step {step} (patience {cfg.early_stop_patience}).")
+                stopped_early = True
 
         if step % cfg.save_every == 0 or step == cfg.max_steps - 1:
             save_checkpoint(
                 out_dir / "last.pt", raw_model(model), optimizer, scheduler, scaler,
-                step, cfg.to_dict(),
+                step, cfg.to_dict(), {"val_loss": best_val, "bad_evals": stopper.bad},
             )
             save_checkpoint(
                 out_dir / f"step_{step:07d}.pt", raw_model(model), optimizer, scheduler, scaler,
                 step, cfg.to_dict(),
             )
+            prune_checkpoints(out_dir, cfg.keep_last_checkpoints)
             if Path(cfg.tokenizer_path).exists():
                 shutil.copy(cfg.tokenizer_path, out_dir / "tokenizer.json")
 
+        if stopped_early:
+            break
+
+    last_step = step if cfg.max_steps > start_step else start_step
     save_checkpoint(
         out_dir / "last.pt", raw_model(model), optimizer, scheduler, scaler,
-        cfg.max_steps - 1, cfg.to_dict(),
+        last_step, cfg.to_dict(), {"val_loss": best_val, "bad_evals": stopper.bad},
     )
     print(f"Done. Checkpoints in {out_dir}")
+    return {"last_step": last_step, "best_val": best_val, "bad_evals": stopper.bad}
