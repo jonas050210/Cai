@@ -1,4 +1,4 @@
-.PHONY: setup smoke test lint prepare tokenizer pack pretrain sft chat eval
+.PHONY: setup smoke test lint ci prepare tokenizer pack pretrain sft chat eval
 
 setup:
 	pip install -e ".[dev]"
@@ -11,6 +11,8 @@ test:
 
 lint:
 	ruff check src tests
+
+ci: lint test
 
 prepare:
 	codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license
