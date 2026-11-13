@@ -1,4 +1,4 @@
-.PHONY: setup smoke quick test lint ci pilot collect stats sft-data prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
+.PHONY: setup smoke quick test lint ci curriculum pilot collect stats sft-data prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
 
 setup:
 	pip install -e ".[dev]"
@@ -27,7 +27,7 @@ stats:
 	codeplan-stats --input data/raw/github.jsonl --target-tokens 1000000000
 
 prepare:
-	codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license --near-dedup
+	codeplan-prepare --input data/raw/my_data.jsonl --out-dir data/filtered --require-license --near-dedup --syntax-check
 
 tokenizer:
 	codeplan-tokenizer --train data/filtered/train.jsonl --out artifacts/tokenizer.json --vocab-size 16000
@@ -43,6 +43,9 @@ doctor:
 
 pretrain:
 	codeplan-pretrain --config configs/pretrain_50m_4060ti.json
+
+curriculum:
+	bash scripts/curriculum.sh --config configs/pretrain_100m_4060ti.json
 
 session:
 	bash scripts/train_session.sh --config configs/pretrain_50m_4060ti.json

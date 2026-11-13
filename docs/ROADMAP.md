@@ -31,7 +31,10 @@
 - [x] Resumable short sessions + GPU thermal guard
 - [x] Validation loss restored on resume
 - [x] Preflight checks with measured throughput/VRAM (`codeplan-doctor`)
-- [ ] Train 50M baseline (blocked on data: 12M of ~800M tokens)
+- [x] 99M configuration with a memory budget (`docs/100M_PLAN.md`)
+- [x] Syntax gate, curriculum scheduling, reproducible `run.json`
+- [ ] Train 50M baseline (blocked on data: 18M of ~800M tokens)
+- [ ] Train 99M model (blocked on data: 18M of ~983M tokens)
 - [ ] Track sample quality over time
 - [ ] Add learning-rate finder
 - [ ] Try 1024 vs 2048 context

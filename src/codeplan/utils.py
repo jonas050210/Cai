@@ -38,6 +38,54 @@ def precision_dtype(device: torch.device, precision: str) -> torch.dtype | None:
     raise ValueError(f"Unknown precision: {precision}")
 
 
+def _git_sha() -> tuple[str, bool]:
+    """Return (short sha, dirty) without failing outside a repository."""
+    import subprocess
+
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5, check=False,
+        ).stdout.strip()
+        dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, timeout=5, check=False,
+            ).stdout.strip()
+        )
+        return sha or "unknown", dirty
+    except Exception:  # pragma: no cover - depends on the environment
+        return "unknown", False
+
+
+def run_metadata(config: dict, extra: dict | None = None) -> dict:
+    """Everything needed to reproduce a run six months later."""
+    import platform
+    import socket
+    import sys
+    import time
+
+    sha, dirty = _git_sha()
+    payload = {
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "git_sha": sha,
+        "git_dirty": dirty,
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "hostname": socket.gethostname(),
+        "cpu_count": os.cpu_count(),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda if torch.cuda.is_available() else None,
+        "device_name": (
+            torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+        ),
+        "config": config,
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
 def configure_cpu_threads(device: torch.device | str) -> int:
     """Use every core for CPU training; leave GPU runs to the default thread pool."""
     if str(device).startswith("cuda"):

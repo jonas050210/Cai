@@ -20,6 +20,7 @@ from .utils import (
     load_checkpoint,
     maybe_compile,
     precision_dtype,
+    run_metadata,
     set_seed,
 )
 
@@ -67,6 +68,13 @@ def main() -> None:
         )
     tokenizer = CodePlanTokenizer.load(cfg.tokenizer_path)
     cfg.model.vocab_size = tokenizer.vocab_size
+    if not (Path(cfg.data_dir) / "meta.json").exists():
+        raise SystemExit(
+            f"Packed data not found: {cfg.data_dir}/meta.json\n"
+            "Build it first:\n"
+            "  codeplan-pack --filtered-dir data/filtered --tokenizer artifacts/tokenizer.json "
+            "--out-dir data/packed"
+        )
     meta = load_meta(cfg.data_dir)
     if meta["vocab_size"] != tokenizer.vocab_size:
         raise ValueError("Packed data vocab_size does not match tokenizer")
@@ -139,6 +147,15 @@ def main() -> None:
         return
 
     save_json(Path(cfg.out_dir) / "config.json", cfg.to_dict())
+    save_json(
+        Path(cfg.out_dir) / "run.json",
+        run_metadata(
+            cfg.to_dict(),
+            {"mode": "pretrain", "parameters": model.num_parameters(),
+             "tokens_per_step": cfg.tokens_per_step(),
+             "total_tokens": cfg.total_tokens()},
+        ),
+    )
     train_loop(
         model, train_loader, cfg, device, dtype, optimizer, scheduler, scaler,
         start_step=start_step, val_loader=val_loader, mode="pretrain",

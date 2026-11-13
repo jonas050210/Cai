@@ -20,6 +20,7 @@ from .utils import (
     load_checkpoint,
     maybe_compile,
     precision_dtype,
+    run_metadata,
     set_seed,
 )
 
@@ -44,6 +45,12 @@ def main() -> None:
         cfg.max_steps = args.max_steps
     if not cfg.sft_data:
         raise ValueError("SFT config needs sft_data or --data")
+    if not Path(cfg.sft_data).exists():
+        raise SystemExit(
+            f"SFT data not found: {cfg.sft_data}\n"
+            "Mine it from the corpus first:\n"
+            "  codeplan-sft-data --input data/filtered/train.jsonl --out-dir data/sft"
+        )
     problems = cfg.validate()
     if problems:
         raise SystemExit("Invalid config:\n- " + "\n- ".join(problems))
@@ -108,6 +115,15 @@ def main() -> None:
     print(f"SFT examples: {len(train_ds)} train / {0 if val_ds is None else len(val_ds)} val")
 
     save_json(Path(cfg.out_dir) / "config.json", cfg.to_dict())
+    save_json(
+        Path(cfg.out_dir) / "run.json",
+        run_metadata(
+            cfg.to_dict(),
+            {"mode": "sft", "parameters": model.num_parameters(),
+             "tokens_per_step": cfg.tokens_per_step(),
+             "total_tokens": cfg.total_tokens()},
+        ),
+    )
     train_loop(
         model, loader, cfg, device, dtype, optimizer, scheduler, scaler,
         start_step=start_step, val_loader=val_loader, mode="sft",

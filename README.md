@@ -134,6 +134,16 @@ data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
 ```
 
+## Modelle
+
+| Config | Params | Einsatz |
+|---|---|---|
+| `pretrain_pilot.json` | 40M | Pipeline-Test, 1–2 h |
+| `pretrain_50m_4060ti.json` | 40M | Baseline, 20k Steps |
+| `pretrain_100m_4060ti.json` | **99M** | Zielmodell, 983M Tokens, ~8–14 h |
+
+Details, VRAM-Rechnung und Datenanforderungen: `docs/100M_PLAN.md`.
+
 ## Chat-GUI
 
 `codeplan-serve` startet eine lokale Web-App (kein Build, keine npm-Abhängigkeit):

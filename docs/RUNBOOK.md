@@ -46,9 +46,11 @@ What "success" looks like:
 Known limitation: 2.7 epochs means the model partly memorises the pilot corpus.
 This run validates plumbing and speed, not quality.
 
-## Path B: real run (~1B tokens)
+## Path B: real run (40M or 100M, ~1B tokens)
 
 ### 1. Data (the actual bottleneck)
+
+For the 100M model see `docs/100M_PLAN.md` — it needs ~3.6 GB of text.
 
 ```bash
 export GITHUB_TOKEN=...
