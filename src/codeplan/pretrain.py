@@ -15,6 +15,7 @@ from .model import CodePlanLM
 from .tokenizer import CodePlanTokenizer
 from .trainer import build_optimizer, lr_lambda, train_loop, worker_init_fn
 from .utils import (
+    configure_cpu_threads,
     get_device,
     load_checkpoint,
     maybe_compile,
@@ -51,6 +52,7 @@ def main() -> None:
 
     set_seed(cfg.seed)
     device = get_device(cfg.device)
+    configure_cpu_threads(device)
     dtype = precision_dtype(device, cfg.precision)
     if device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -105,6 +107,9 @@ def main() -> None:
         pin_memory=(device.type == "cuda"),
         drop_last=True,
         worker_init_fn=worker_init_fn if cfg.num_workers > 0 else None,
+        # keep the prefetch pipeline alive instead of restarting workers per epoch
+        persistent_workers=cfg.num_workers > 0,
+        prefetch_factor=6 if cfg.num_workers > 0 else None,
     )
 
     val_loader = None

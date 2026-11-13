@@ -84,6 +84,17 @@ class CodePlanTokenizer:
             ids = ids + [self.eos_id]
         return ids
 
+    def encode_batch(self, texts: list[str], add_eos: bool = False) -> list[list[int]]:
+        """Encode many texts at once; the backend parallelises across cores."""
+        encodings = self.tokenizer.encode_batch(texts)
+        results = []
+        for enc in encodings:
+            ids = list(enc.ids)
+            if add_eos:
+                ids.append(self.eos_id)
+            results.append(ids)
+        return results
+
     def decode(self, ids: Iterable[int], skip_special: bool = True) -> str:
         return self.tokenizer.decode(list(ids), skip_special_tokens=skip_special)
 

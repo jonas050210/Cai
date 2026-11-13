@@ -59,3 +59,41 @@ def test_german_comments_in_code_are_detected(tmp_path):
     stats = prepare(inp, tmp_path / "out")
     assert stats["kept_total"] == 1
     assert stats["lang_de"] == 1
+
+
+def test_parallel_prepare_matches_serial(tmp_path):
+    """workers=2 must produce byte-identical output, including dedup decisions."""
+    import json as _json
+
+    records = []
+    for i in range(40):
+        records.append(
+            {
+                "id": f"r{i}",
+                "text": f"def f{i}(x):\n    return x * {i}\n" * 6,
+                "lang": "en",
+                "domain": "code",
+                "license": "mit",
+                "source": f"github:a/b/f{i}.py",
+            }
+        )
+    path = tmp_path / "in.jsonl"
+    path.write_text("\n".join(_json.dumps(r) for r in records) + "\n")
+
+    serial = prepare(path, tmp_path / "serial", workers=1)
+    parallel = prepare(path, tmp_path / "parallel", workers=2)
+    assert serial == parallel
+    for name in ("train.jsonl", "val.jsonl", "test.jsonl", "stats.json"):
+        assert (tmp_path / "serial" / name).read_bytes() == (
+            tmp_path / "parallel" / name
+        ).read_bytes()
+
+
+def test_script_check_matches_unicode_names():
+    from codeplan.prepare import is_disallowed_char
+
+    assert is_disallowed_char("漢")
+    assert is_disallowed_char("Ж")
+    assert not is_disallowed_char("ä")
+    assert not is_disallowed_char("A")
+    assert not is_disallowed_char("€")

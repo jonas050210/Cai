@@ -15,6 +15,7 @@ from .model import CodePlanLM
 from .tokenizer import CodePlanTokenizer
 from .trainer import build_optimizer, lr_lambda, train_loop
 from .utils import (
+    configure_cpu_threads,
     get_device,
     load_checkpoint,
     maybe_compile,
@@ -49,6 +50,7 @@ def main() -> None:
 
     set_seed(cfg.seed)
     device = get_device(cfg.device)
+    configure_cpu_threads(device)
     dtype = precision_dtype(device, cfg.precision)
     tokenizer = CodePlanTokenizer.load(cfg.tokenizer_path)
     cfg.model.vocab_size = tokenizer.vocab_size
@@ -87,6 +89,8 @@ def main() -> None:
         collate_fn=collate,
         pin_memory=(device.type == "cuda"),
         drop_last=True,
+        persistent_workers=cfg.num_workers > 0,
+        prefetch_factor=6 if cfg.num_workers > 0 else None,
     )
     if len(loader) == 0:
         raise ValueError("SFT dataset smaller than batch_size; reduce batch_size.")

@@ -35,7 +35,8 @@ Implemented:
   epoch check, disk estimate, and a measured throughput/VRAM benchmark.
 - Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
 - SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
-- Tiny smoke config and synthetic seed data; 74 unit tests; CI (lint, tests, smoke).
+- Multicore data pipeline (parallel prepare, batched tokenisation).
+- Tiny smoke config and synthetic seed data; 77 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
 - Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants
