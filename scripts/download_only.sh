@@ -47,10 +47,6 @@ mkdir -p data/raw
 IFS=',' read -r -a NAMES <<< "$LISTS"
 for name in "${NAMES[@]}"; do
   out="data/raw/${name}.jsonl"
-  if [[ -s "$out" ]]; then
-    echo "skip $name: $out exists ($(wc -l < "$out") records)"
-    continue
-  fi
   echo "== $name =="
   PYTHONPATH=src "$PY" -m codeplan.collect --out "$out" \
     --repos-file "data/repos/${name}.txt" --max-repo-mb 40 --workers 12 --sleep 0.2

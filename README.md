@@ -201,7 +201,7 @@ bash scripts/build_corpus.sh          # oder im Vordergrund
 Nur Daten laden (läuft auch auf einem Laptop ohne GPU, nur `langdetect` nötig):
 
 ```bash
-bash scripts/download_only.sh
+bash scripts/download_only.sh   # fortsetzbar: fertige Repos werden übersprungen
 ```
 
 Beides sammelt → filtert → stats → Tokenizer → packen → doctor. Downloads laufen
