@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# use the project venv even when it is not activated
+export PATH="$ROOT/.venv/bin:$PATH"
+
 codeplan-prepare \
   --input data/seed/pretrain_seed.jsonl \
   --out-dir artifacts/smoke/filtered \
