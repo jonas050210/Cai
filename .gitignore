@@ -20,9 +20,11 @@ htmlcov/
 # --- Datasets (never commit data) ---
 data/raw/
 data/filtered/
+data/filtered_*/
 data/packed/
+data/packed_*/
 data/collect/
-data/sft/
+data/sft*/
 *.bin
 *.bin.index.json
 

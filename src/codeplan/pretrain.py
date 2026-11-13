@@ -14,7 +14,13 @@ from .data import MixturePackedDataset, PackedDataset, load_meta
 from .model import CodePlanLM
 from .tokenizer import CodePlanTokenizer
 from .trainer import build_optimizer, lr_lambda, train_loop, worker_init_fn
-from .utils import get_device, load_checkpoint, precision_dtype, set_seed
+from .utils import (
+    get_device,
+    load_checkpoint,
+    maybe_compile,
+    precision_dtype,
+    set_seed,
+)
 
 
 def main() -> None:
@@ -68,6 +74,7 @@ def main() -> None:
     if cfg.compile and hasattr(torch, "compile"):
         model = torch.compile(model)
 
+    model = maybe_compile(model, cfg.torch_compile)
     optimizer = build_optimizer(model, cfg)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda step: lr_lambda(step, cfg))
     use_scaler = dtype == torch.float16

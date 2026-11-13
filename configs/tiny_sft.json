@@ -18,7 +18,6 @@
   "precision": "fp32",
   "num_workers": 0,
   "seed": 1337,
-  "compile": false,
   "resume": null,
   "init_checkpoint": "artifacts/smoke/pretrain/last.pt",
   "log_every": 5,
@@ -46,5 +45,6 @@
   },
   "keep_last_checkpoints": 2,
   "early_stop_patience": 0,
-  "sft_val_ratio": 0.05
+  "sft_val_ratio": 0.05,
+  "torch_compile": false
 }

@@ -14,7 +14,13 @@ from .data import SFTDataset, sft_collate, split_sft_dataset
 from .model import CodePlanLM
 from .tokenizer import CodePlanTokenizer
 from .trainer import build_optimizer, lr_lambda, train_loop
-from .utils import get_device, load_checkpoint, precision_dtype, set_seed
+from .utils import (
+    get_device,
+    load_checkpoint,
+    maybe_compile,
+    precision_dtype,
+    set_seed,
+)
 
 
 def main() -> None:
@@ -55,6 +61,7 @@ def main() -> None:
     else:
         print("Warning: SFT from random init is usually not useful.")
 
+    model = maybe_compile(model, cfg.torch_compile)
     optimizer = build_optimizer(model, cfg)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda step: lr_lambda(step, cfg))
     use_scaler = dtype == torch.float16

@@ -90,6 +90,7 @@ codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --host 0.0.0.0 --port 80
 | `codeplan-collect` | GitHub-Repos nach Lizenz-Whitelist laden (+ Manifest mit Checksums) |
 | `codeplan-stats` | Korpusgröße, Domänen-/Sprachmix, Duplikate, Token-Budget |
 | `codeplan-doctor` | Preflight: Umgebung, Config, Daten, VRAM, Durchsatz, ETA |
+| `codeplan-sft-data` | SFT-Paare aus Code minen (implement/explain/test aus Docstrings, JSDoc, Go-/Rust-Kommentaren) |
 | `codeplan-ingest` | Lokale Dateien zu JSONL |
 | `codeplan-prepare` | DE/EN-Filter, Code-Kommentar-Filter, Dedup, Split |
 | `codeplan-fertility` | Tokenizer-Kennzahlen, Vokabular-Empfehlung |

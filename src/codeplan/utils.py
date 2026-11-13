@@ -38,6 +38,25 @@ def precision_dtype(device: torch.device, precision: str) -> torch.dtype | None:
     raise ValueError(f"Unknown precision: {precision}")
 
 
+def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    """Return the eager module behind a ``torch.compile`` wrapper."""
+    return getattr(model, "_orig_mod", model)
+
+
+def maybe_compile(model: torch.nn.Module, enabled: bool) -> torch.nn.Module:
+    """Compile the model when asked; silently fall back when unsupported."""
+    if not enabled:
+        return model
+    if not hasattr(torch, "compile"):
+        print("torch.compile is not available in this torch build; running eagerly")
+        return model
+    try:
+        return torch.compile(model)
+    except Exception as exc:  # pragma: no cover - depends on the platform
+        print(f"torch.compile failed ({exc}); running eagerly")
+        return model
+
+
 def _rng_state(state: Any) -> torch.Tensor:
     """Normalise a stored RNG state to a CPU uint8 tensor."""
     if isinstance(state, torch.Tensor):
@@ -59,7 +78,7 @@ def save_checkpoint(
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "step": step,
-        "model": model.state_dict(),
+        "model": unwrap_model(model).state_dict(),
         "config": config,
         "rng": {
             "python": random.getstate(),
