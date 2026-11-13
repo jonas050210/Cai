@@ -63,6 +63,22 @@ GENERATED_MARKERS = (
 )
 
 
+def token_warning(token: str | None) -> str | None:
+    """Catch the most common copy/paste mistakes before 18 requests fail."""
+    if not token:
+        return None
+    if token.startswith("ghp_ghp_") or token.startswith("github_pat_github_pat_"):
+        return (
+            "the token starts with a doubled prefix (ghp_ghp_...). Paste only the "
+            "part GitHub shows you."
+        )
+    if token.startswith("ghp_") and len(token) != 40:
+        return f"a classic token is 40 characters, this one has {len(token)} (truncated or doubled?)"
+    if token.startswith("github_pat_") and len(token) < 80:
+        return f"a fine-grained token is longer than {len(token)} characters"
+    return None
+
+
 def license_ok(spdx: str | None) -> bool:
     return bool(spdx) and spdx.lower() in ALLOWED_LICENSES
 
@@ -262,6 +278,7 @@ def collect(
     summary = {"repos": 0, "records": 0, "chars": 0, "skipped": 0, "errors": 0}
     budget = max_repos
 
+    unauthorized = 0
     candidates: list[dict] = []
     if repos:
         for full_name in repos:
@@ -269,6 +286,14 @@ def collect(
                 info = repo_info(full_name, token)
             except urllib.error.HTTPError as exc:
                 summary["errors"] += 1
+                if exc.code == 401:
+                    unauthorized += 1
+                    if unauthorized >= 3:
+                        raise SystemExit(
+                            "GitHub returned 401 Unauthorized three times: the token in "
+                            "GITHUB_TOKEN is invalid, expired or revoked.\n"
+                            "Create a new classic token without scopes and re-run."
+                        )
                 print(f"  {full_name}: HTTP {exc.code}")
                 continue
             if not license_ok(info["license"]):
@@ -398,6 +423,10 @@ def main() -> None:
 
     if not args.token:
         print("Note: no GITHUB_TOKEN set; API limit is 60 requests/hour.")
+    else:
+        problem = token_warning(args.token)
+        if problem:
+            raise SystemExit(f"Refusing to use GITHUB_TOKEN: {problem}")
 
     languages = [v.strip() for v in args.languages.split(",") if v.strip()]
     licenses = [v.strip() for v in args.licenses.split(",") if v.strip()]
@@ -420,6 +449,11 @@ def main() -> None:
         min_records_per_repo=args.min_records_per_repo,
     )
     print(json.dumps(summary, indent=2))
+    if summary["records"] == 0:
+        raise SystemExit(
+            "No records collected. Check the token, the repository names and the "
+            "connection before running the rest of the pipeline."
+        )
 
 
 if __name__ == "__main__":
