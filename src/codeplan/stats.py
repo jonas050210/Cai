@@ -49,6 +49,15 @@ def analyse(
     sampled_chars = 0
     token_ready = 0
 
+    if not Path(path).exists():
+        raise SystemExit(
+            f"No corpus at {path}\n"
+            "Collect and filter it first:\n"
+            "  bash scripts/build_corpus.sh          # curated lists, ~2-4 h for everything\n"
+            "  bash scripts/collect_core.sh          # only the 53 core repos, ~45 min\n"
+            "  bash scripts/quick_test.sh            # offline mini corpus from data/seed"
+        )
+
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()

@@ -65,3 +65,15 @@ def pytest_approx(value, rel):
     import pytest
 
     return pytest.approx(value, rel=rel)
+
+
+def test_missing_input_explains_how_to_build_the_corpus(tmp_path):
+    import pytest
+
+    from codeplan.stats import analyse
+
+    with pytest.raises(SystemExit) as excinfo:
+        analyse(str(tmp_path / "nope.jsonl"))
+    message = str(excinfo.value)
+    assert "build_corpus.sh" in message
+    assert "collect_core.sh" in message
