@@ -36,7 +36,8 @@ Implemented:
 - Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
 - SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
 - Multicore data pipeline (parallel prepare, batched tokenisation).
-- Tiny smoke config and synthetic seed data; 77 unit tests; CI (lint, tests, smoke).
+- Web chat UI with SSE streaming (`codeplan-serve`, `src/codeplan/web/`).
+- Tiny smoke config and synthetic seed data; 82 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
 - Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants

@@ -6,6 +6,7 @@ readable: RMSNorm + RoPE + SwiGLU + tied embeddings.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import asdict
 from typing import Optional
 
@@ -239,7 +240,7 @@ class CodePlanLM(nn.Module):
 
 
 @torch.no_grad()
-def generate(
+def generate_stream(
     model: CodePlanLM,
     input_ids: torch.Tensor,
     max_new_tokens: int = 256,
@@ -248,8 +249,8 @@ def generate(
     top_p: float = 0.95,
     repetition_penalty: float = 1.05,
     eos_token_id: int | None = None,
-) -> torch.Tensor:
-    """Simple single-sequence generation with KV cache."""
+) -> Iterator[int]:
+    """Yield generated token ids one by one (KV cache, single sequence)."""
     model.eval()
     assert input_ids.dim() == 2 and input_ids.shape[0] == 1
     generated = input_ids.clone()
@@ -287,13 +288,43 @@ def generate(
             probs = F.softmax(logits_step, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
 
-        generated = torch.cat([generated, next_token], dim=1)
-        if eos_token_id is not None and next_token.item() == eos_token_id:
-            break
+        token_id = int(next_token.item())
+        if eos_token_id is not None and token_id == eos_token_id:
+            return
+        yield token_id
 
+        generated = torch.cat([generated, next_token], dim=1)
         logits, _, past_kvs = model(
             next_token, start_pos=generated.shape[1] - 1, use_cache=True, past_kvs=past_kvs
         )
         next_token_logits = logits[:, -1, :]
 
-    return generated
+
+@torch.no_grad()
+def generate(
+    model: CodePlanLM,
+    input_ids: torch.Tensor,
+    max_new_tokens: int = 256,
+    temperature: float = 0.8,
+    top_k: int = 50,
+    top_p: float = 0.95,
+    repetition_penalty: float = 1.05,
+    eos_token_id: int | None = None,
+) -> torch.Tensor:
+    """Generate ``max_new_tokens`` after ``input_ids``; returns ids incl. the prompt."""
+    tokens = list(
+        generate_stream(
+            model,
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+            eos_token_id=eos_token_id,
+        )
+    )
+    if not tokens:
+        return input_ids.clone()
+    extra = torch.tensor([tokens], dtype=input_ids.dtype, device=input_ids.device)
+    return torch.cat([input_ids, extra], dim=1)

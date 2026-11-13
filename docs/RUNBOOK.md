@@ -104,6 +104,13 @@ codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl \
 codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
 ```
 
+Or in the browser with streaming:
+
+```bash
+codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --port 8000
+# http://localhost:8000
+```
+
 `codeplan-chat` understands `/help`, `/reset`, `/exit` (Ctrl-D works too). Only the
 SFT checkpoint speaks in turns; the pretrain checkpoint is a code completer, use
 `codeplan-generate` for that.

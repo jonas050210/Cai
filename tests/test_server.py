@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from codeplan.config import ModelConfig
@@ -52,3 +54,81 @@ def test_health_and_generate(tmp_path):
     assert client.post("/generate", json={"max_new_tokens": 4}).status_code == 400
     assert client.post("/generate", json={"prompt": "x", "top_p": 0}).status_code == 400
     assert client.get("/").status_code == 200
+
+
+def test_web_ui_is_served(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from codeplan.server import create_app
+
+    checkpoint, tokenizer = _checkpoint(tmp_path)
+    client = TestClient(create_app(str(checkpoint), str(tokenizer), "cpu"))
+
+    index = client.get("/")
+    assert index.status_code == 200
+    assert "CodePlan" in index.text
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/style.css").status_code == 200
+    assert client.get("/static/secrets.txt").status_code == 404
+
+
+def test_chat_endpoint_streams_tokens(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from codeplan.server import create_app
+
+    checkpoint, tokenizer = _checkpoint(tmp_path)
+    client = TestClient(create_app(str(checkpoint), str(tokenizer), "cpu"))
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "messages": [{"role": "user", "content": "def add(a, b):"}],
+            "max_tokens": 8,
+            "stream": True,
+            "temperature": 0.0,
+        },
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert "data: " in body
+    payloads = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
+    assert payloads[-1]["done"] is True
+    assert isinstance(payloads[-1]["completion_tokens"], int)
+
+
+def test_chat_endpoint_validates_payload(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from codeplan.server import create_app
+
+    checkpoint, tokenizer = _checkpoint(tmp_path)
+    client = TestClient(create_app(str(checkpoint), str(tokenizer), "cpu"))
+
+    assert client.post("/api/chat", json={"messages": "nope"}).status_code == 400
+    assert client.post("/api/chat", json={}).status_code == 400
+    assert client.post("/api/load", json={}).status_code == 400
+    assert client.post("/api/load", json={"checkpoint": "missing.pt"}).status_code == 404
+
+
+def test_chat_prompt_uses_role_markers():
+    from codeplan.server import build_chat_prompt
+    from codeplan.tokenizer import (
+        ASSISTANT_TOKEN,
+        BOS_TOKEN,
+        SYSTEM_TOKEN,
+        USER_TOKEN,
+    )
+
+    prompt = build_chat_prompt(
+        None,
+        "system",
+        [
+            {"role": "user", "content": "hallo"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "weiter"},
+        ],
+    )
+    assert prompt.startswith(BOS_TOKEN + SYSTEM_TOKEN)
+    assert prompt.count(USER_TOKEN) == 2
+    assert prompt.endswith(ASSISTANT_TOKEN)
