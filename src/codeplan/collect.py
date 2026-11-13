@@ -63,6 +63,25 @@ GENERATED_MARKERS = (
 )
 
 
+TOKEN_FILE = Path.home() / ".config" / "codeplan" / "env"
+
+
+def load_token(explicit: str | None = None) -> str | None:
+    """Token from --token, GITHUB_TOKEN, or ~/.config/codeplan/env (in that order)."""
+    if explicit:
+        return explicit
+    env = os.environ.get("GITHUB_TOKEN")
+    if env:
+        return env.strip()
+    if TOKEN_FILE.exists():
+        for line in TOKEN_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            for prefix in ("export GITHUB_TOKEN=", "GITHUB_TOKEN="):
+                if line.startswith(prefix):
+                    return line[len(prefix):].strip().strip('"').strip("'")
+    return None
+
+
 def token_warning(token: str | None) -> str | None:
     """Catch the most common copy/paste mistakes before 18 requests fail."""
     if not token:
@@ -412,14 +431,32 @@ def main() -> None:
     parser.add_argument("--max-repos", type=int, default=200)
     parser.add_argument("--max-repo-mb", type=float, default=40.0)
     parser.add_argument("--sleep", type=float, default=1.0, help="Seconds between API calls")
-    parser.add_argument("--token", default=os.environ.get("GITHUB_TOKEN"))
+    parser.add_argument(
+        "--token",
+        default=None,
+        help="GitHub token; defaults to $GITHUB_TOKEN or ~/.config/codeplan/env",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Only list repositories")
     parser.add_argument("--repos", default=None, help="Comma separated owner/name list")
+    parser.add_argument(
+        "--repos-file",
+        default=None,
+        help="File with one owner/name per line (# starts a comment)",
+    )
     parser.add_argument("--min-size-kb", type=int, default=100, help="Skip tiny repos")
     parser.add_argument(
         "--min-records-per-repo", type=int, default=5, help="Skip doc-only repositories"
     )
     args = parser.parse_args()
+    args.token = load_token(args.token)
+
+    repos = [v.strip() for v in (args.repos or "").split(",") if v.strip()]
+    if args.repos_file:
+        listed = Path(args.repos_file).read_text(encoding="utf-8").splitlines()
+        repos.extend(
+            line.split("#", 1)[0].strip() for line in listed
+        )
+        repos = [name for name in repos if name]
 
     if not args.token:
         print("Note: no GITHUB_TOKEN set; API limit is 60 requests/hour.")
@@ -444,7 +481,7 @@ def main() -> None:
         args.token,
         args.sleep,
         args.dry_run,
-        repos=[v.strip() for v in (args.repos or "").split(",") if v.strip()] or None,
+        repos=repos or None,
         min_size_kb=args.min_size_kb,
         min_records_per_repo=args.min_records_per_repo,
     )

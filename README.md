@@ -134,6 +134,26 @@ data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
 ```
 
+## Token einmal setzen
+
+```bash
+bash scripts/install_token.sh
+```
+Fragt den Token versteckt ab, prüft ihn gegen die GitHub-API, legt ihn in
+`~/.config/codeplan/env` (mode 600) ab und hängt eine `source`-Zeile in
+`~/.bashrc`. Danach nutzen ihn alle Terminals und alle Werkzeuge — auch ohne
+Neustart, weil der Sammler die Datei selbst liest.
+
+## Kuratierte Repos
+
+`data/repos/core.txt` — **53 Repositories**, jede Lizenz einzeln über die
+GitHub-API geprüft (MIT, Apache-2.0, BSD, ISC, Unlicense), alle unter 300 MB
+History. `data/repos/heavy.txt` enthält die großen (Storybook, TypeScript, …).
+
+```bash
+bash scripts/collect_core.sh          # sammelt + filtert + zeigt das Token-Budget
+```
+
 ## Modelle
 
 | Config | Params | Einsatz |

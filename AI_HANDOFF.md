@@ -36,11 +36,13 @@ Implemented:
 - Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
 - SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
 - Multicore data pipeline (parallel prepare, batched tokenisation).
+- Token stored once in ~/.config/codeplan/env (`scripts/install_token.sh`),
+  curated repo list `data/repos/core.txt` (53 repos, licences verified).
 - Web chat UI with SSE streaming (`codeplan-serve`, `src/codeplan/web/`).
 - 99M config (`configs/pretrain_100m_4060ti.json`, see `docs/100M_PLAN.md`),
   syntax gate in `prepare --syntax-check`, curriculum script, `run.json`
   provenance per run, determinism tests.
-- Tiny smoke config and synthetic seed data; 87 unit tests; CI (lint, tests, smoke).
+- Tiny smoke config and synthetic seed data; 88 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
 - Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants
