@@ -39,6 +39,9 @@ codeplan-prepare --input data/raw/github.jsonl --out-dir data/filtered \
 codeplan-stats --input data/filtered/train.jsonl --target-tokens 1000000000
 ```
 
+`--workers` (default: all cores minus one) parallelises the per-document work;
+the output is byte-identical to a single-process run.
+
 `--near-dedup` removes near-duplicates (MinHash 128 permutations, Jaccard 0.8,
 8-byte shingles) on top of exact hashing. `codeplan-stats` tells you how many
 tokens you really have and how many epochs a target budget would need; if it says

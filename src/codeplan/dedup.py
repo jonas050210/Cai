@@ -94,12 +94,20 @@ class NearDuplicateFilter:
         self.duplicates = 0
         self.skipped = 0
 
-    def is_duplicate(self, text: str) -> bool:
+    def sketch(self, text: str) -> np.ndarray | None:
+        """Compute the sketch for ``text`` (the expensive, parallelisable part)."""
         # Very short files have too few distinct shingles for a stable estimate.
         if len(text) < self.min_chars:
             self.skipped += 1
-            return False
-        sig = sketch(text, window=self.window, num_perm=self.num_perm, max_chars=self.max_chars)
+            return None
+        return sketch(text, window=self.window, num_perm=self.num_perm, max_chars=self.max_chars)
+
+    def is_duplicate(self, text: str) -> bool:
+        sig = self.sketch(text)
+        return False if sig is None else self.is_duplicate_sketch(sig)
+
+    def is_duplicate_sketch(self, sig: np.ndarray | None) -> bool:
+        """Sequential part: LSH lookup plus Jaccard verification."""
         if sig is None:
             return False
         self.seen += 1

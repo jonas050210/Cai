@@ -32,3 +32,12 @@ def test_vocab_size_below_byte_level_minimum_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="impossible for byte-level BPE"):
         train_tokenizer(["hello world"] * 3, vocab_size=128, min_frequency=1,
                         out_path=tmp_path / "tok.json")
+
+
+def test_encode_batch_matches_single(tmp_path):
+    texts = ["def add(a, b): return a + b"] * 5 + ["class A: pass"]
+    tokenizer = train_tokenizer(texts, 512, 1, tmp_path / "tok.json")
+    single = [tokenizer.encode(text, add_eos=True) for text in texts]
+    batched = tokenizer.encode_batch(texts, add_eos=True)
+    assert single == batched
+    assert batched[0][-1] == tokenizer.eos_id

@@ -23,21 +23,34 @@ def pack(split_path: Path, out_dir: Path, split: str, tokenizer: CodePlanTokeniz
     files["all"] = all_path.name
 
     try:
+        batch: list[dict] = []
+
+        def flush() -> None:
+            if not batch:
+                return
+            texts = [rec["text"] for rec in batch]
+            encoded = tokenizer.encode_batch(texts, add_eos=True)
+            for rec, ids in zip(batch, encoded):
+                domain = rec.get("domain", "general")
+                if domain not in handles:
+                    path = out_dir / f"{split}_{domain}.bin"
+                    handles[domain] = open(path, "wb")
+                    files[domain] = path.name
+                buf = np.asarray(ids, dtype=dtype).tobytes()
+                handles[domain].write(buf)
+                handles["all"].write(buf)
+                counts[domain] += len(ids)
+                counts["all"] += len(ids)
+            batch.clear()
+
         for rec in iter_jsonl(split_path):
             domain = rec.get("domain", "general")
             if domain not in {"code", "planning", "general"}:
                 continue
-            if domain not in handles:
-                path = out_dir / f"{split}_{domain}.bin"
-                handles[domain] = open(path, "wb")
-                files[domain] = path.name
-            ids = tokenizer.encode(rec["text"], add_eos=True)
-            arr = np.asarray(ids, dtype=dtype)
-            buf = arr.tobytes()
-            handles[domain].write(buf)
-            handles["all"].write(buf)
-            counts[domain] += len(ids)
-            counts["all"] += len(ids)
+            batch.append(rec)
+            if len(batch) >= 256:
+                flush()
+        flush()
     finally:
         for h in handles.values():
             h.close()

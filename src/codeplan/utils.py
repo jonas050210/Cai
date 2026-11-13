@@ -38,6 +38,20 @@ def precision_dtype(device: torch.device, precision: str) -> torch.dtype | None:
     raise ValueError(f"Unknown precision: {precision}")
 
 
+def configure_cpu_threads(device: torch.device | str) -> int:
+    """Use every core for CPU training; leave GPU runs to the default thread pool."""
+    if str(device).startswith("cuda"):
+        return torch.get_num_threads()
+    cpus = os.cpu_count() or 4
+    threads = max(1, cpus)
+    torch.set_num_threads(threads)
+    try:
+        torch.set_num_interop_threads(max(1, min(4, cpus // 4)))
+    except RuntimeError:
+        pass  # already initialised by another call
+    return threads
+
+
 def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
     """Return the eager module behind a ``torch.compile`` wrapper."""
     return getattr(model, "_orig_mod", model)
