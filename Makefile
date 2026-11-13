@@ -1,4 +1,4 @@
-.PHONY: setup smoke quick test lint ci pilot collect stats prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
+.PHONY: setup smoke quick test lint ci pilot collect stats sft-data prepare tokenizer fertility pack doctor pretrain session sft eval bench export serve
 
 setup:
 	pip install -e ".[dev]"
@@ -46,6 +46,9 @@ pretrain:
 
 session:
 	bash scripts/train_session.sh --config configs/pretrain_50m_4060ti.json
+
+sft-data:
+	codeplan-sft-data --input data/filtered/train.jsonl --out-dir data/sft
 
 sft:
 	codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl

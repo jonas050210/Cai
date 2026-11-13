@@ -34,7 +34,8 @@ Implemented:
 - Preflight doctor: environment, config validation, tokenizer/data consistency,
   epoch check, disk estimate, and a measured throughput/VRAM benchmark.
 - Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
-- Tiny smoke config and synthetic seed data; 58 unit tests; CI (lint, tests, smoke).
+- SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
+- Tiny smoke config and synthetic seed data; 74 unit tests; CI (lint, tests, smoke).
 
 Not implemented yet:
 - Large-scale data curation. The pilot corpus is 12M tokens; a 40M model wants

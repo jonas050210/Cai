@@ -127,15 +127,31 @@ If you get CUDA OOM:
 - reduce `eval_iters`
 - close other GPU apps
 
-## 7. SFT
+## 7. SFT data
+
+A base model continues code; it does not answer. SFT pairs are mined from the
+corpus itself, so no model generates the targets:
+
+```bash
+codeplan-sft-data --input data/filtered/train.jsonl --out-dir data/sft
+```
+
+Three kinds per documented function: `implement` (docstring -> code),
+`explain` (code -> docstring) and `test` (tests -> implementation, rare). Python
+docstrings, JSDoc and `//`/`///` comments in Go and Rust are understood; files are
+classified by extension, so `.md`/`.json` are skipped. On the pilot corpus this
+yields ~29k pairs in a few seconds. Report: `data/sft/report.json`.
+
+## 8. SFT
 
 Create `data/sft/train.jsonl` with structured examples.
 
 ```bash
-codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl
+codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl \
+  --init checkpoints/pretrain_50m/last.pt
 ```
 
-## 8. Evaluate
+## 9. Evaluate
 
 ```bash
 codeplan-eval --checkpoint checkpoints/sft_50m/last.pt --data-dir data/packed \
@@ -157,7 +173,7 @@ It reports pass@k and language compliance. It is **not** a real sandbox: the
 code runs as your user with CPU/memory/time limits only. Use a container for
 untrusted models.
 
-## 9. Export and serve
+## 10. Export and serve
 
 ```bash
 codeplan-export --checkpoint checkpoints/sft_50m/last.pt \
@@ -170,7 +186,7 @@ model size and context. Tied embeddings are exported once (`aliases` in the conf
 file lists the dropped duplicate); `codeplan.export.load_exported()` rebuilds the
 model from weights + config.
 
-## 10. Chat
+## 11. Chat
 
 ```bash
 codeplan-chat --checkpoint checkpoints/sft_50m/last.pt

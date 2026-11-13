@@ -68,3 +68,11 @@ def test_resume_accepts_byte_state_from_numpy(tmp_path):
     payload["rng"]["torch"] = payload["rng"]["torch"].numpy()
     torch.save(payload, path)
     load_checkpoint(path, _model(), device="cpu", restore_rng=True)
+
+
+def test_compile_helpers_are_safe():
+    from codeplan.utils import maybe_compile, unwrap_model
+
+    model = _model()
+    assert maybe_compile(model, False) is model
+    assert unwrap_model(model) is model

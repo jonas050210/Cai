@@ -44,7 +44,10 @@ def main() -> None:
     device = next(model.parameters()).device
     history: list[tuple[str, str]] = []
 
-    print("CodePlan-LM chat. Type /exit to quit, /reset to clear history.")
+    print(
+        "CodePlan-LM chat. /help for commands, /exit or Ctrl-D to quit, "
+        "/reset to clear history."
+    )
     while True:
         try:
             user = input("\nYou> ").strip()
@@ -53,11 +56,19 @@ def main() -> None:
             break
         if not user:
             continue
-        if user == "/exit":
+        command = user.lower()
+        if command in ("/exit", "/quit", "exit", "quit", ":q"):
             break
-        if user == "/reset":
+        if command in ("/reset", "/clear"):
             history = []
             print("History cleared.")
+            continue
+        if command == "/help":
+            print(
+                "/reset  clear the conversation history\n"
+                "/exit   quit (Ctrl-D works too)\n"
+                "Anything else is sent to the model."
+            )
             continue
 
         prompt = build_prompt(tokenizer, args.system, history, user)
@@ -77,9 +88,13 @@ def main() -> None:
             eos_token_id=tokenizer.eos_id,
         )
         new_tokens = out[0, input_ids.shape[1]:].tolist()
+        # cut at the first EOS: everything after it is model noise
+        if tokenizer.eos_id in new_tokens:
+            new_tokens = new_tokens[: new_tokens.index(tokenizer.eos_id)]
         answer = tokenizer.decode(new_tokens, skip_special=True).strip()
-        print(f"\nLM> {answer}")
-        history.append((user, answer))
+        print(f"\nLM> {answer if answer else '(empty answer)'}")
+        if answer:
+            history.append((user, answer))
 
 
 if __name__ == "__main__":

@@ -57,6 +57,7 @@ class TrainConfig:
     # runtime
     device: str = "auto"
     precision: str = "bf16"  # bf16 | fp16 | fp32
+    torch_compile: bool = False  # +30-80% on Ada, costs ~1 min of compile time
     num_workers: int = 2
     seed: int = 1337
     compile: bool = False
@@ -152,9 +153,27 @@ class TrainConfig:
         return cfg
 
 
+ALLOWED_EXTRA_KEYS = {"notes", "description", "comment"}
+
+
+def unknown_keys(raw: dict, cls: type) -> list[str]:
+    """Keys that would be silently ignored by ``from_dict``."""
+    return sorted(set(raw) - set(cls.__dataclass_fields__) - ALLOWED_EXTRA_KEYS)
+
+
 def load_train_config(path: str | Path) -> TrainConfig:
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
+    ignored = unknown_keys(raw, TrainConfig)
+    if ignored:
+        print(f"Warning: ignoring unknown keys in {path}: {', '.join(ignored)}")
+    model_raw = raw.get("model") if isinstance(raw.get("model"), dict) else None
+    if model_raw:
+        ignored_model = unknown_keys(model_raw, ModelConfig)
+        if ignored_model:
+            print(
+                f"Warning: ignoring unknown model keys in {path}: {', '.join(ignored_model)}"
+            )
     return TrainConfig.from_dict(raw)
 
 

@@ -95,7 +95,20 @@ bash scripts/train_session.sh --config configs/pretrain_50m_4060ti.json \
 Watch `checkpoints/pretrain_50m/log.jsonl`: `loss` and `val_loss` must both go
 down. Early stopping and `best.pt` protect against a wasted run.
 
-### 5. SFT and evaluation
+### 5. SFT data and chat
+
+```bash
+codeplan-sft-data --input data/filtered/train.jsonl --out-dir data/sft
+codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl \
+  --init checkpoints/pretrain_pilot/last.pt
+codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
+```
+
+`codeplan-chat` understands `/help`, `/reset`, `/exit` (Ctrl-D works too). Only the
+SFT checkpoint speaks in turns; the pretrain checkpoint is a code completer, use
+`codeplan-generate` for that.
+
+### 6. SFT and evaluation
 
 ```bash
 codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl
