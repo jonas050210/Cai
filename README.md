@@ -134,6 +134,11 @@ data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
 ```
 
+## Von null starten
+
+`docs/START_HERE.md` — jeder Befehl copy-paste-fähig, von `git clone`
+bis zur Chat-GUI.
+
 ## Token einmal setzen
 
 ```bash
