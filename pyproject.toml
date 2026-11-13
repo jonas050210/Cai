@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "safetensors>=0.4"]
+dev = ["pytest>=8", "ruff>=0.6", "safetensors>=0.4", "fastapi>=0.110", "httpx>=0.27", "uvicorn>=0.29"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "safetensors>=0.4"]
 
 [project.scripts]
@@ -43,6 +43,9 @@ codeplan-serve = "codeplan.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+codeplan = ["web/*.html", "web/*.js", "web/*.css"]
 
 [tool.ruff]
 line-length = 100

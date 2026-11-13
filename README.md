@@ -75,7 +75,11 @@ codeplan-sft --config configs/sft_50m_4060ti.json --data data/sft/train.jsonl
 codeplan-eval --checkpoint checkpoints/sft_50m/last.pt --data-dir data/packed --split test --seq-len 2048 --per-domain
 codeplan-bench --checkpoint checkpoints/sft_50m/last.pt --tasks data/bench/code_tasks.jsonl --allow-exec
 
-# 8. Chatten
+# 8. Chat im Browser
+codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --port 8000
+# -> http://localhost:8000
+
+# 8b. Chat im Terminalten
 codeplan-chat --checkpoint checkpoints/sft_50m/last.pt
 
 # 9. Exportieren und lokal servieren
@@ -129,6 +133,19 @@ scripts/train_session.sh           # Training in Sessions + Thermal-Guard
 data/seed/                         # winzige synthetische Testdaten
 AI_HANDOFF.md                      # Übergabe für andere KIs / Entwickler
 ```
+
+## Chat-GUI
+
+`codeplan-serve` startet eine lokale Web-App (kein Build, keine npm-Abhängigkeit):
+Streaming-Antworten, Checkpoint-Umschalter, Regler für temperature/top_k/top_p,
+Markdown- und Codeblöcke mit Copy-Button, Verlauf im Browser, Export als `.md`.
+
+```bash
+codeplan-serve --checkpoint checkpoints/sft_50m/last.pt --port 8000
+```
+
+Endpunkte: `GET /` (UI), `GET /api/health`, `GET /api/checkpoints`,
+`POST /api/load`, `POST /api/chat` (SSE-Streaming), `POST /generate` (JSON).
 
 ## Performance
 
