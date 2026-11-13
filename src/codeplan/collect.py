@@ -22,8 +22,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
 from .ingest import CODE_EXTS, TEXT_EXTS, guess_domain, guess_lang
 
@@ -255,6 +256,73 @@ def repo_info(full_name: str, token: str | None) -> dict:
     }
 
 
+def fetch_candidates(
+    repos: list[str], token: str | None, sleep: float, workers: int
+) -> tuple[list[dict], list[str], int]:
+    """Look up repository metadata, in parallel when workers > 1.
+
+    Returns ``(candidates, rejected, unauthorized_count)``. Rejected entries keep
+    the reason so the caller can report them.
+    """
+    candidates: list[dict] = []
+    rejected: list[str] = []
+    unauthorized = 0
+
+    def one(full_name: str) -> tuple[str, Any]:
+        try:
+            return full_name, repo_info(full_name, token)
+        except urllib.error.HTTPError as exc:
+            return full_name, exc
+        except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+            return full_name, exc
+
+    if workers <= 1:
+        results = ((name, one(name)[1], 0) for name in repos)
+        for name, info, _ in results:
+            if isinstance(info, Exception):
+                unauthorized += _report_lookup_error(name, info, rejected)
+                continue
+            if not license_ok(info["license"]):
+                rejected.append(f"{name}: license {info['license'] or 'unknown'}")
+                continue
+            candidates.append(info)
+            time.sleep(sleep)
+        return candidates, rejected, unauthorized
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(one, name) for name in repos]
+        for future in as_completed(futures):
+            name, info = future.result()
+            if isinstance(info, Exception):
+                unauthorized += _report_lookup_error(name, info, rejected)
+                continue
+            if not license_ok(info["license"]):
+                rejected.append(f"{name}: license {info['license'] or 'unknown'}")
+                continue
+            candidates.append(info)
+    order = {name.lower(): i for i, name in enumerate(repos)}
+    candidates.sort(key=lambda info: order.get(info["full_name"].lower(), 0))
+    return candidates, rejected, unauthorized
+
+
+def _report_lookup_error(name: str, exc: Exception, rejected: list[str]) -> int:
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 401:
+            return 1
+        rejected.append(f"{name}: HTTP {exc.code}")
+    else:
+        rejected.append(f"{name}: {exc}")
+    return 0
+
+
+def download_records(
+    repo: dict, token: str | None, max_repo_mb: float
+) -> tuple[list[dict], str, int]:
+    """Download one repository and turn it into records (runs in a worker thread)."""
+    members, digest = tarball_members(repo["full_name"], repo["branch"], token, max_repo_mb)
+    return records_from_files(repo["full_name"], repo["license"], members), digest, len(members)
+
+
 def tarball_members(repo: str, branch: str, token: str | None, max_repo_mb: float):
     """Download a repository tarball and yield (relative path, bytes) members."""
     url = f"{API_ROOT}/repos/{repo}/tarball/{branch}"
@@ -289,39 +357,33 @@ def collect(
     repos: list[str] | None = None,
     min_size_kb: int = 100,
     min_records_per_repo: int = 5,
+    workers: int = 1,
 ) -> dict:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = out_path.with_suffix(".manifest.jsonl")
     seen_repos: set[str] = set()
     seen_text: set[str] = set()
-    summary = {"repos": 0, "records": 0, "chars": 0, "skipped": 0, "errors": 0}
+    summary: dict[str, Any] = {
+        "repos": 0, "records": 0, "chars": 0, "skipped": 0, "errors": 0,
+        "workers": workers,
+    }
     budget = max_repos
 
-    unauthorized = 0
-    candidates: list[dict] = []
     if repos:
-        for full_name in repos:
-            try:
-                info = repo_info(full_name, token)
-            except urllib.error.HTTPError as exc:
-                summary["errors"] += 1
-                if exc.code == 401:
-                    unauthorized += 1
-                    if unauthorized >= 3:
-                        raise SystemExit(
-                            "GitHub returned 401 Unauthorized three times: the token in "
-                            "GITHUB_TOKEN is invalid, expired or revoked.\n"
-                            "Create a new classic token without scopes and re-run."
-                        )
-                print(f"  {full_name}: HTTP {exc.code}")
-                continue
-            if not license_ok(info["license"]):
-                print(f"  {full_name}: license {info['license'] or 'unknown'} not allowed")
-                summary["skipped"] += 1
-                continue
-            candidates.append(info)
-            time.sleep(sleep)
+        candidates, rejected, unauthorized = fetch_candidates(
+            repos, token, sleep, workers
+        )
+        for line in rejected:
+            print(f"  {line}")
+            summary["skipped"] += 1
+        if unauthorized >= 3:
+            raise SystemExit(
+                "GitHub returned 401 Unauthorized three times: the token in "
+                "GITHUB_TOKEN is invalid, expired or revoked.\n"
+                "Create a new classic token without scopes and re-run."
+            )
     else:
+        candidates = []
         for license_name in licenses:
             if len(candidates) >= max_repos:
                 break
@@ -336,89 +398,122 @@ def collect(
                     )
                 )
 
+    # Decide what to download before starting any worker: keeps the budget,
+    # the dry run and the manifest deterministic regardless of thread order.
+    plan: list[dict] = []
+    for repo in candidates:
+        if budget <= 0:
+            break
+        name = repo["full_name"]
+        if name in seen_repos:
+            continue
+        seen_repos.add(name)
+        budget -= 1
+        if repo["size_kb"] < min_size_kb:
+            plan.append({**repo, "_skip": "skipped-small"})
+            continue
+        # GitHub's size counts the whole history, tarballs are much smaller;
+        # the real limit is enforced while streaming the download.
+        if repo["size_kb"] > max_repo_mb * 1024 * 12:
+            plan.append({**repo, "_skip": "skipped-huge"})
+            continue
+        plan.append(repo)
+
     with open(out_path, "w", encoding="utf-8") as out, open(
         manifest_path, "w", encoding="utf-8"
     ) as manifest:
 
         def skip(repo: dict, status: str, **extra: object) -> None:
             summary["skipped"] += 1
+            clean = {k: v for k, v in repo.items() if not k.startswith("_")}
             manifest.write(
-                json.dumps({**repo, **extra, "status": status}, ensure_ascii=False) + "\n"
+                json.dumps({**clean, **extra, "status": status}, ensure_ascii=False) + "\n"
             )
+            if status != "ok":
+                print(f"  {repo['full_name']}: {status}")
 
-        for repo in candidates:
-            if budget <= 0:
-                break
-            name = repo["full_name"]
-            if name in seen_repos:
-                continue
-            seen_repos.add(name)
-            budget -= 1
-
-            if repo["size_kb"] < min_size_kb:
-                skip(repo, "skipped-small")
-                continue
-            # GitHub's size counts the whole history, tarballs are much smaller;
-            # the real limit is enforced while streaming the download.
-            if repo["size_kb"] > max_repo_mb * 1024 * 12:
-                skip(repo, "skipped-huge")
-                continue
-            if dry_run:
-                print(f"  would collect {name} ({repo['license']}, {repo['stars']} stars)")
-                continue
-            try:
-                members, digest = tarball_members(name, repo["branch"], token, max_repo_mb)
-            except (urllib.error.URLError, ValueError, tarfile.TarError) as exc:
-                summary["errors"] += 1
-                print(f"  {name}: {exc}")
-                skip(repo, "error", error=str(exc))
-                time.sleep(sleep)
-                continue
-
-            records = records_from_files(name, repo["license"], members)
-            kept_records = []
-            seen_here: list[str] = []
+        def store(repo: dict, records: list[dict], digest: str, scanned: int) -> None:
+            kept: list[dict] = []
+            keys: list[str] = []
             for record in records:
                 key = hashlib.sha256(record["text"].encode()).hexdigest()
                 if key in seen_text:
                     continue
-                seen_here.append(key)
-                kept_records.append(record)
-
-            if len(kept_records) < min_records_per_repo:
-                skip(repo, "skipped-few-records", records=len(kept_records))
-                print(f"  {name}: only {len(kept_records)} records, skipped")
-                time.sleep(sleep)
-                continue
-
+                keys.append(key)
+                kept.append(record)
+            if len(kept) < min_records_per_repo:
+                skip(repo, "skipped-few-records", records=len(kept))
+                return
             chars = 0
-            for record, key in zip(kept_records, seen_here):
+            for record, key in zip(kept, keys):
                 seen_text.add(key)
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 chars += len(record["text"])
-
             summary["repos"] += 1
-            summary["records"] += len(kept_records)
+            summary["records"] += len(kept)
             summary["chars"] += chars
+            clean = {k: v for k, v in repo.items() if not k.startswith("_")}
             manifest.write(
                 json.dumps(
                     {
-                        **repo,
+                        **clean,
                         "status": "ok",
                         "tarball_sha256": digest,
-                        "files_scanned": len(members),
-                        "records": len(kept_records),
+                        "files_scanned": scanned,
+                        "records": len(kept),
                         "chars": chars,
                     },
                     ensure_ascii=False,
                 )
                 + "\n"
             )
-            print(f"  {name}: {len(kept_records)} records, {chars / 1e3:.0f}k chars")
-            time.sleep(sleep)
+            print(
+                f"  {repo['full_name']}: {len(kept)} records, {chars / 1e3:.0f}k chars",
+                flush=True,
+            )
+
+        pending = []
+        for repo in plan:
+            if repo.get("_skip"):
+                skip(repo, repo["_skip"])
+            elif dry_run:
+                print(f"  would collect {repo['full_name']} "
+                      f"({repo['license']}, {repo['stars']} stars)")
+            else:
+                pending.append(repo)
+
+        if pending and not dry_run:
+            if workers <= 1:
+                for repo in pending:
+                    try:
+                        records, digest, scanned = download_records(repo, token, max_repo_mb)
+                    except (urllib.error.URLError, ValueError, tarfile.TarError, OSError) as exc:
+                        summary["errors"] += 1
+                        skip(repo, "error", error=str(exc))
+                        time.sleep(sleep)
+                        continue
+                    store(repo, records, digest, scanned)
+                    time.sleep(sleep)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {
+                        pool.submit(download_records, repo, token, max_repo_mb): repo
+                        for repo in pending
+                    }
+                    done = 0
+                    for future in as_completed(futures):
+                        repo = futures[future]
+                        done += 1
+                        try:
+                            records, digest, scanned = future.result()
+                        except (urllib.error.URLError, ValueError, tarfile.TarError, OSError) as exc:
+                            summary["errors"] += 1
+                            skip(repo, "error", error=str(exc))
+                            continue
+                        store(repo, records, digest, scanned)
+                        print(f"  [{done}/{len(pending)}] {repo['full_name']}", flush=True)
 
     summary["manifest"] = str(manifest_path)
-    summary["estimated_tokens"] = int(summary["chars"] / 3.2)
     return summary
 
 
@@ -430,6 +525,12 @@ def main() -> None:
     parser.add_argument("--min-stars", type=int, default=200)
     parser.add_argument("--max-repos", type=int, default=200)
     parser.add_argument("--max-repo-mb", type=float, default=40.0)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel downloads (1 = sequential). 8-16 turns 470 repos into minutes",
+    )
     parser.add_argument("--sleep", type=float, default=1.0, help="Seconds between API calls")
     parser.add_argument(
         "--token",
@@ -484,6 +585,7 @@ def main() -> None:
         repos=repos or None,
         min_size_kb=args.min_size_kb,
         min_records_per_repo=args.min_records_per_repo,
+        workers=args.workers,
     )
     print(json.dumps(summary, indent=2))
     if summary["records"] == 0:

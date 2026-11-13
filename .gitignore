@@ -50,3 +50,4 @@ events.out.tfevents.*
 .idea/
 .vscode/
 *.swp
+logs/

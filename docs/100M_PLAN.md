@@ -79,7 +79,7 @@ codeplan-pretrain --config configs/pretrain_100m_4060ti.json --max-steps 15000
 bash scripts/install_token.sh     # token once, valid everywhere
 
 # 1. data
-bash scripts/build_corpus.sh      # collect -> filter -> stats -> tokenizer -> pack -> doctor
+bash scripts/overnight.sh         # collect (12 parallel) -> filter -> stats -> tokenizer -> pack -> doctor
 codeplan-prepare --input data/raw/more.jsonl --out-dir data/filtered \
   --require-license --near-dedup --syntax-check
 codeplan-stats --input data/filtered/train.jsonl --target-tokens 983000000

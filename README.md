@@ -194,8 +194,12 @@ GitHub-API geprüft (MIT, Apache-2.0, BSD, ISC, Unlicense), alle unter 300 MB
 History. `data/repos/heavy.txt` enthält die großen (Storybook, TypeScript, …).
 
 ```bash
-bash scripts/build_corpus.sh          # sammeln -> filtern -> stats -> Tokenizer -> packen -> doctor
+bash scripts/overnight.sh             # im Hintergrund, Log in logs/overnight-*.log
+bash scripts/build_corpus.sh          # oder im Vordergrund
 ```
+
+Beides sammelt → filtert → stats → Tokenizer → packen → doctor. Downloads laufen
+mit `--workers 12` parallel: 473 Repos in ~30 min statt in Stunden.
 
 Ein Befehl für die ganze Datenkette; jeder Schritt wird übersprungen, wenn sein
 Ergebnis schon existiert. `--core-only` nimmt nur die 53 Repos, `--stop-after stats`
