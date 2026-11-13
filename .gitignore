@@ -51,3 +51,4 @@ events.out.tfevents.*
 .vscode/
 *.swp
 logs/
+.venv-dl/

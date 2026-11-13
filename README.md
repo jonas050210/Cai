@@ -198,6 +198,12 @@ bash scripts/overnight.sh             # im Hintergrund, Log in logs/overnight-*.
 bash scripts/build_corpus.sh          # oder im Vordergrund
 ```
 
+Nur Daten laden (läuft auch auf einem Laptop ohne GPU, nur `langdetect` nötig):
+
+```bash
+bash scripts/download_only.sh
+```
+
 Beides sammelt → filtert → stats → Tokenizer → packen → doctor. Downloads laufen
 mit `--workers 12` parallel: 473 Repos in ~30 min statt in Stunden.
 
