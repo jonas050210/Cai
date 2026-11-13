@@ -49,7 +49,7 @@ for name in "${NAMES[@]}"; do
   out="data/raw/${name}.jsonl"
   echo "== $name =="
   PYTHONPATH=src "$PY" -m codeplan.collect --out "$out" \
-    --repos-file "data/repos/${name}.txt" --max-repo-mb 40 --workers 12 --sleep 0.2
+    --repos-file "data/repos/${name}.txt" --max-repo-mb 50 --workers 12 --sleep 0.2
 done
 
 echo
