@@ -24,7 +24,7 @@ codeplan-pack \
   --tokenizer artifacts/smoke/tokenizer.json \
   --out-dir artifacts/smoke/packed
 
-codeplan-pretrain --config configs/tiny_smoke.json
+codeplan-pretrain --config configs/tiny_smoke.json --fresh
 codeplan-sft --config configs/tiny_sft.json
 
 codeplan-eval \

@@ -49,7 +49,7 @@ PY
 fi
 
 echo "== training ($CFG) =="
-codeplan-pretrain --config "$CFG"
+codeplan-pretrain --config "$CFG" --fresh
 
 LOG="$(python3 -c "import json,sys;print(json.load(open('$CFG'))['out_dir'])")/log.jsonl"
 echo
