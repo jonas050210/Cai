@@ -164,6 +164,12 @@ keyword               55   10.8%    0.897      2.45
 Bezeichner sind der Engpass — Operatoren und Keywords sitzen. Genau das, was
 „Perplexity 15" verdeckt.
 
+## Schneller trainieren
+
+`configs/pretrain_100m_fast.json` (micro-batch 2, ohne Gradient-Checkpointing,
+`torch.compile`) plus `bash scripts/train_fast.sh --steps 12000`. Details und
+Notfall-Knöpfe bei zu wenig VRAM: `docs/PERFORMANCE.md`.
+
 ## Training unterbrechen
 
 `Ctrl+C` rechnet den laufenden Step zu Ende, speichert `last.pt` (inkl. Optimizer
