@@ -5,6 +5,7 @@
 #   bash scripts/build_corpus.sh --core-only     # only the 53 core repos (~45 min)
 #   bash scripts/build_corpus.sh --stop-after stats
 #   bash scripts/build_corpus.sh --workers 16     # more parallel downloads
+#   bash scripts/build_corpus.sh --knowledge      # + concept cards + Stack Exchange Q&A
 #
 # Every step is idempotent: if the output file is already there, it is skipped.
 # Interrupting is safe - rerun the same command and it continues where the
@@ -20,6 +21,9 @@ STOP_AFTER="doctor"
 VOCAB=16000
 WORKERS=16
 BILINGUAL=0
+KNOWLEDGE=0
+SE_TAGS="python,javascript,typescript,java,go,rust,git,sql,docker,linux"
+SE_PER_TAG=40
 CONFIG="configs/pretrain_100m_4060ti.json"
 DE_PAGES=3000
 
@@ -32,6 +36,8 @@ while [[ $# -gt 0 ]]; do
     --workers) WORKERS="$2"; shift 2 ;;
     --bilingual) BILINGUAL=1; VOCAB="${VOCAB_BILINGUAL:-24576}"; shift ;;
     --de-pages) DE_PAGES="$2"; shift 2 ;;
+    --knowledge) KNOWLEDGE=1; shift ;;
+    --se-per-tag) SE_PER_TAG="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -84,6 +90,21 @@ if (( BILINGUAL )); then
     codeplan-german-wiki --out data/raw/german_wiki.jsonl --pages "$DE_PAGES"
   fi
 fi
+# Concept cards + Stack Exchange Q&A: knowledge, not more syntax.
+if (( KNOWLEDGE )); then
+  if step_done "data/raw/cards.jsonl"; then
+    echo "skip cards: data/raw/cards.jsonl exists"
+  else
+    stage "concept cards"
+    codeplan-cards --out data/raw/cards.jsonl --sft-out data/raw/cards_sft.jsonl
+  fi
+  if step_done "data/raw/stackexchange.jsonl"; then
+    echo "skip stackexchange: exists"
+  else
+    stage "stack exchange Q&A (${SE_PER_TAG} per tag)"
+    codeplan-se --out data/raw/stackexchange.jsonl --per-tag "$SE_PER_TAG" --tags "$SE_TAGS"
+  fi
+fi
 reached collect
 
 # 2. merge ---------------------------------------------------------------
@@ -97,6 +118,8 @@ else
     [[ -f "data/raw/${list}.jsonl" ]] && cat "data/raw/${list}.jsonl" >> "$merged"
   done
   [[ -f data/raw/german_wiki.jsonl ]] && cat data/raw/german_wiki.jsonl >> "$merged"
+  [[ -f data/raw/cards.jsonl ]] && cat data/raw/cards.jsonl >> "$merged"
+  [[ -f data/raw/stackexchange.jsonl ]] && cat data/raw/stackexchange.jsonl >> "$merged"
   echo "$(wc -l < "$merged") records"
 fi
 reached merge

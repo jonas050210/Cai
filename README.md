@@ -164,6 +164,34 @@ keyword               55   10.8%    0.897      2.45
 Bezeichner sind der Engpass — Operatoren und Keywords sitzen. Genau das, was
 „Perplexity 15" verdeckt.
 
+## Wissen statt nur Syntax
+
+```bash
+bash scripts/build_corpus.sh --knowledge      # Konzeptkarten + Stack-Exchange-Q&A
+```
+
+- `codeplan-cards` — 83 Karten (Datenstrukturen, Algorithmen, Konzepte, Web,
+  Performance-Vergleiche) auf Englisch, die 26 Struktur-/Algorithmuskarten auch
+  auf Deutsch, plus 83 fertige SFT-Paare („Was ist X, wann nutze ich es",
+  Übersetzen DE→EN).
+- `codeplan-se` — Top-Fragen und beste Antworten über die Stack-Exchange-API
+  (CC BY-SA 4.0), pro Tag sortiert nach Stimmen. Das ist Urteilsvermögen:
+  „warum ist X langsamer", nicht nur Syntax.
+
+## Sandbox und Agent
+
+```bash
+sudo apt install bubblewrap util-linux
+codeplan-agent --task "sortiere eine Liste" --script calls.json
+```
+
+Der Agent arbeitet nur in `/workspace` (`bubblewrap`: eigener Dateibaum, kein
+Netz, read-only `/usr`), mit Zeit-, Prozess-, Speicher- und Dateigrenzen
+(`prlimit`). Ohne `bwrap` wird **nichts** ausgeführt — ein „Sandbox"-Fallback auf
+`subprocess` wäre schlimmer als keine Sandbox.
+
+Werkzeuge: `run`, `read`, `write`, `list`, `done` — ein JSON-Objekt pro Schritt.
+
 ## Zweisprachig (EN-first, Deutsch als Helfer)
 
 `configs/pretrain_bilingual_100m.json` — 96,2M Parameter, **GQA** (4 KV-Heads),

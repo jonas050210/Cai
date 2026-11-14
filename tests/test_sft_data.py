@@ -117,3 +117,34 @@ def test_generate_respects_max_pairs(tmp_path):
     corpus.write_text(json.dumps({"text": PYTHON, "source": "a/util.py"}) + "\n")
     report = generate(corpus, tmp_path / "sft", max_pairs=1, min_description=10)
     assert report["pairs"] == 1
+
+
+def test_extra_pair_files_are_merged(tmp_path):
+    import json
+
+    from codeplan.sft_data import generate
+
+    corpus = tmp_path / "train.jsonl"
+    corpus.write_text(
+        json.dumps({
+            "text": 'def add(a, b):\n    """Add two numbers."""\n    return a + b\n' * 3,
+            "lang": "en", "domain": "code", "license": "mit", "source": "x",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    extra = tmp_path / "cards_sft.jsonl"
+    extra.write_text(
+        json.dumps({
+            "system": "You are precise.", "user": "What is a hash map?",
+            "assistant": "A key-value structure with O(1) lookup.",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    generate(corpus, tmp_path / "out", extra=(extra,))
+    pairs = [
+        json.loads(line)
+        for name in ("train", "val")
+        for line in (tmp_path / "out" / f"{name}.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert any(pair["user"] == "What is a hash map?" for pair in pairs)

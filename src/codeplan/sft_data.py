@@ -341,6 +341,31 @@ def _split(key: str, val_ratio: float) -> str:
     return "val" if bucket < val_ratio else "train"
 
 
+def _append_extra_pairs(extra, handles, seen, counts, per_kind) -> None:
+    """Copy ready-made pairs (cards, Stack Exchange) into the SFT files."""
+    for extra_path in extra:
+        path = Path(extra_path)
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            pair = json.loads(line)
+            user = pair.get("user")
+            assistant = pair.get("assistant")
+            if not user or not assistant:
+                continue
+            key = hashlib.sha256((str(user) + "\x00" + str(assistant)).encode()).hexdigest()
+            if key in seen:
+                counts["duplicates"] += 1
+                continue
+            seen.add(key)
+            handle = handles["val"] if counts["pairs"] % 50 == 49 else handles["train"]
+            handle.write(json.dumps(pair, ensure_ascii=False) + "\n")
+            counts["pairs"] += 1
+            per_kind["extra"] = per_kind.get("extra", 0) + 1
+
+
 def generate(
     input_path: str | Path,
     out_dir: str | Path,
@@ -348,8 +373,13 @@ def generate(
     val_ratio: float = 0.02,
     min_description: int = 20,
     kinds: tuple[str, ...] = ("implement", "explain", "test"),
+    extra: tuple[str | Path, ...] = (),
 ) -> dict:
-    """Mine SFT pairs from a filtered JSONL corpus."""
+    """Mine SFT pairs from a filtered JSONL corpus plus optional ready-made pairs.
+
+    ``extra`` files are already in pair format (system/user/assistant), for
+    example ``data/raw/cards_sft.jsonl`` or Stack Exchange pairs.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     seen: set[str] = set()
@@ -396,8 +426,9 @@ def generate(
                     per_language[function.language] = per_language.get(function.language, 0) + 1
                     if counts["pairs"] >= max_pairs:
                         raise StopIteration
+        _append_extra_pairs(extra, handles, seen, counts, per_kind)
     except StopIteration:
-        pass
+        _append_extra_pairs(extra, handles, seen, counts, per_kind)
     finally:
         for handle in handles.values():
             handle.close()
@@ -416,6 +447,12 @@ def main() -> None:
     parser.add_argument("--max-pairs", type=int, default=50000)
     parser.add_argument("--val-ratio", type=float, default=0.02)
     parser.add_argument("--min-description", type=int, default=20)
+    parser.add_argument(
+        "--extra",
+        nargs="*",
+        default=None,
+        help="Extra pair files (system/user/assistant), e.g. data/raw/cards_sft.jsonl",
+    )
     parser.add_argument(
         "--kinds",
         default="implement,explain,test",
@@ -437,6 +474,7 @@ def main() -> None:
         val_ratio=args.val_ratio,
         min_description=args.min_description,
         kinds=kinds,
+        extra=tuple(args.extra or ()),
     )
     print(json.dumps(report, indent=2))
     if report["pairs"] == 0:

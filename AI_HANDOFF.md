@@ -36,6 +36,10 @@ Implemented:
 - Pilot runbook and a reproducible pilot script (`scripts/pilot.sh`, 18 repos).
 - SFT data mining from the corpus (docstrings -> implement/explain/test pairs).
 - Multicore data pipeline (parallel prepare, batched tokenisation).
+- Knowledge sources: `codeplan-cards` (83 concept cards, 83 SFT pairs) and
+  `codeplan-se` (Stack Exchange, CC BY-SA 4.0); `--knowledge` in build_corpus.
+- `codeplan-agent` + `sandbox.py`: bwrap/prlimit sandbox, 5 tools, scripted or
+  model-backed policy, session log.
 - Bilingual model: GQA (n_kv_heads), QK-Norm, Z-loss in `model.py`;
   `configs/pretrain_bilingual_100m.json` (96.2M) and `sft_bilingual_100m.json`.
 - `codeplan-german-wiki`: German Wikipedia extracts (CC BY-SA 4.0) as JSONL.

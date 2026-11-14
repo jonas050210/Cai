@@ -41,6 +41,9 @@ codeplan-bench = "codeplan.bench:main"
 codeplan-export = "codeplan.export:main"
 codeplan-soup = "codeplan.soup:main"
 codeplan-german-wiki = "codeplan.german:main"
+codeplan-cards = "codeplan.cards:main"
+codeplan-se = "codeplan.stackexchange:main"
+codeplan-agent = "codeplan.agent:main"
 codeplan-serve = "codeplan.server:main"
 
 [tool.setuptools.packages.find]
