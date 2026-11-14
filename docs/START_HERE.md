@@ -103,6 +103,21 @@ Zwischenstand ansehen:
 codeplan-stats --input data/filtered/train.jsonl --target-tokens 983000000
 ```
 
+## 4b. Wissen (Karten + Q&A)
+
+```bash
+bash scripts/build_corpus.sh --knowledge
+```
+
+Konzeptkarten (was ist was, wann nutze ich es, Komplexität) und Stack-Exchange-
+Fragen mit den besten Antworten. Das bringt Urteilsvermögen, das Code allein
+nicht liefert. Für die SFT-Daten danach:
+
+```bash
+codeplan-sft-data --input data/filtered/train.jsonl --out-dir data/sft \
+  --extra data/raw/cards_sft.jsonl
+```
+
 ## 4c. Zweisprachig (Englisch + Deutsch)
 
 ```bash
