@@ -98,3 +98,90 @@ def test_invalid_reply_is_recorded(tmp_path):
     session = run_session("x", tmp_path, policy, Toolbox(tmp_path))
     assert session.steps[0].tool == "error"
     assert session.finished
+
+
+def test_prompt_is_rendered_from_the_tool_table():
+    from codeplan.agent import SYSTEM_PROMPT, TOOLS
+
+    assert len({spec.name for spec in TOOLS}) == len(TOOLS)
+    for spec in TOOLS:
+        assert spec.name in SYSTEM_PROMPT
+        assert spec.args in SYSTEM_PROMPT
+
+
+def test_edit_requires_a_unique_match(tmp_path):
+    from codeplan.agent import Toolbox
+
+    (tmp_path / "a.py").write_text("x = 1\ny = 1\n", encoding="utf-8")
+    box = Toolbox(tmp_path)
+    ok, message = box.edit("a.py", "1", "2")
+    assert not ok and "2 times" in message
+    ok, message = box.edit("a.py", "x = 1", "x = 42")
+    assert ok
+    assert (tmp_path / "a.py").read_text().startswith("x = 42")
+    ok, message = box.edit("a.py", "zzz", "1")
+    assert not ok and "not found" in message
+
+
+def test_grep_and_glob_stay_within_workspace(tmp_path):
+    from codeplan.agent import Toolbox
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("def main():\n    return 'needle'\n", encoding="utf-8")
+    box = Toolbox(tmp_path)
+    ok, hits = box.grep("needle")
+    assert ok and "src/app.py:2" in hits
+    ok, files = box.glob("**/*.py")
+    assert ok and files.strip() == "src/app.py"
+    ok, message = box.grep("x", "../")
+    assert not ok and "escapes" in message
+
+
+def test_unknown_tool_lists_available_tools(tmp_path):
+    from codeplan.agent import Toolbox
+
+    ok, message = Toolbox(tmp_path).call("sudo", {})
+    assert not ok
+    assert "available:" in message
+    assert "grep" in message
+
+
+def test_observations_are_clipped(tmp_path):
+    from codeplan.agent import Toolbox
+
+    (tmp_path / "big.txt").write_text("a" * 20_000, encoding="utf-8")
+    ok, text = Toolbox(tmp_path, max_observation=500).read("big.txt")
+    assert ok
+    assert len(text) < 700
+    assert "truncated" in text
+
+
+def test_transcript_compresses_old_steps(tmp_path):
+    from codeplan.agent import Step, build_transcript
+
+    steps = [
+        Step("list", {"path": "."}, "a\nb\nc", True),
+        Step("read", {"path": "a"}, "content " * 100, True),
+        Step("write", {"path": "b"}, "wrote 3 characters", True),
+        Step("grep", {"pattern": "x"}, "(no matches)", True),
+        Step("run", {"command": "ls"}, "a b", True),
+    ]
+    transcript = build_transcript("do something", steps, keep=2)
+    assert "Earlier steps (compressed)" in transcript
+    assert "content " * 100 not in transcript  # old observation collapsed
+    assert "a b" in transcript  # recent one is verbatim
+
+
+def test_session_log_roundtrip(tmp_path):
+    import json
+
+    from codeplan.agent import run_session
+
+    def policy(transcript, steps):
+        return json.dumps({"tool": "done", "args": {"summary": "nothing to do"}})
+
+    session = run_session("task", tmp_path, policy)
+    path = session.save()
+    payload = json.loads(path.read_text())
+    assert payload["finished"] is True
+    assert payload["steps"][0]["tool"] == "done"

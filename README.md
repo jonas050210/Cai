@@ -190,7 +190,9 @@ Netz, read-only `/usr`), mit Zeit-, Prozess-, Speicher- und Dateigrenzen
 (`prlimit`). Ohne `bwrap` wird **nichts** ausgeführt — ein „Sandbox"-Fallback auf
 `subprocess` wäre schlimmer als keine Sandbox.
 
-Werkzeuge: `run`, `read`, `write`, `list`, `done` — ein JSON-Objekt pro Schritt.
+Werkzeuge: `run`, `read`, `write`, `edit`, `grep`, `glob`, `list`, `done` — ein
+JSON-Objekt pro Schritt, Beobachtungen gekürzt, alte Schritte verdichtet,
+Session-Log als `session.json`. Aufbau und Grenzen: `docs/AGENT.md`.
 
 ## Zweisprachig (EN-first, Deutsch als Helfer)
 
