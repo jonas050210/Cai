@@ -63,49 +63,64 @@ def test_configs_use_torch_compile_key():
 
 
 def test_cli_overrides_batch_size_and_compile(tmp_path, monkeypatch):
-    from codeplan import pretrain
-    from codeplan.config import load_train_config
+    """--batch-size/--grad-accum/--no-compile must win over the config file.
 
-    base = load_train_config("configs/pretrain_100m_fast.json")
+    Uses real (tiny) files instead of patching pathlib.Path, which is immutable
+    on Python 3.14.
+    """
+    import numpy as np
+
+    from codeplan import pretrain
+    from codeplan.tokenizer import train_tokenizer
+
+    tokenizer = train_tokenizer(
+        ["def add(a, b):\n    return a + b"] * 20,
+        vocab_size=274,
+        min_frequency=1,
+        out_path=tmp_path / "tokenizer.json",
+    )
+    packed = tmp_path / "packed"
+    packed.mkdir()
+    ids = tokenizer.encode("def add(a, b):\n    return a + b\n" * 200)
+    for name in ("train_code.bin", "val_all.bin"):
+        np.array(ids, dtype=np.uint16).tofile(packed / name)
+    (packed / "meta.json").write_text(
+        json.dumps({"dtype": "uint16", "vocab_size": tokenizer.vocab_size,
+                    "target_mixture": {"code": 1.0, "planning": 0.0, "general": 0.0}})
+    )
+
+    raw = json.loads(Path("configs/pretrain_100m_fast.json").read_text())
+    raw["data_dir"] = str(packed)
+    raw["tokenizer_path"] = str(tmp_path / "tokenizer.json")
+    raw["out_dir"] = str(tmp_path / "run")
+    raw["max_steps"] = 2000
+    raw["warmup_steps"] = 10
+    raw["num_workers"] = 4
+    raw["model"] = {
+        "vocab_size": 274, "max_seq_len": 32, "d_model": 16, "n_layers": 1,
+        "n_heads": 2, "intermediate_size": 32, "dropout": 0.0,
+        "tie_embeddings": True, "gradient_checkpointing": False,
+    }
+    raw["seq_len"] = 32
+    config = tmp_path / "cfg.json"
+    config.write_text(json.dumps(raw))
+
     captured = {}
 
     def fake_train_loop(model, loader, cfg, *args, **kwargs):
-        captured["batch_size"] = cfg.batch_size
-        captured["grad_accum"] = cfg.grad_accum
-        captured["compile"] = cfg.torch_compile
-        captured["num_workers"] = cfg.num_workers
+        captured.update(
+            batch_size=cfg.batch_size, grad_accum=cfg.grad_accum,
+            compile=cfg.torch_compile, num_workers=cfg.num_workers,
+        )
         return {"last_step": 0, "best_val": 0.0, "bad_evals": 0, "interrupted": False}
 
     monkeypatch.setattr(pretrain, "train_loop", fake_train_loop)
-    # skip building real data: pretend everything exists
-    monkeypatch.setattr(pretrain.Path, "exists", lambda self: True)
-    monkeypatch.setattr(pretrain, "CodePlanTokenizer", type("T", (), {
-        "load": staticmethod(lambda path: type("Tok", (), {"vocab_size": 16000})()),
-    }))
-    monkeypatch.setattr(pretrain, "load_meta", lambda d: {"dtype": "uint16", "vocab_size": 16000})
-
-    class FakeDS:
-        def __init__(self, *a, **k):
-            pass
-
-        def __len__(self):
-            return 8
-
-    class FakeLoader:
-        def __init__(self, *a, **k):
-            pass
-
-    monkeypatch.setattr(pretrain, "MixturePackedDataset", FakeDS)
-    monkeypatch.setattr(pretrain, "PackedDataset", FakeDS)
-    monkeypatch.setattr(pretrain, "DataLoader", FakeLoader)
-    monkeypatch.setattr(pretrain, "save_json", lambda *a, **k: None)
-
     monkeypatch.setattr("sys.argv", [
-        "codeplan-pretrain", "--config", "configs/pretrain_100m_fast.json",
-        "--batch-size", "1", "--grad-accum", "16", "--no-compile",
-        "--max-steps", "2000", "--device", "cpu", "--fresh",
+        "codeplan-pretrain", "--config", str(config),
+        "--batch-size", "1", "--grad-accum", "16", "--no-compile", "--fresh",
+        "--device", "cpu",
     ])
     pretrain.main()
     assert captured == {
-        "batch_size": 1, "grad_accum": 16, "compile": False, "num_workers": base.num_workers,
+        "batch_size": 1, "grad_accum": 16, "compile": False, "num_workers": 4,
     }
