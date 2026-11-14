@@ -41,6 +41,17 @@ def main() -> None:
     parser.add_argument("--device", default=None)
     parser.add_argument("--precision", default=None)
     parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None, help="Micro-batch (VRAM knob)")
+    parser.add_argument("--grad-accum", type=int, default=None, help="Steps per optimizer step")
+    parser.add_argument("--num-workers", type=int, default=None, help="Data loader processes")
+    parser.add_argument(
+        "--compile", dest="torch_compile", action="store_true", default=None,
+        help="torch.compile the model (10-20% faster after a slow first step)",
+    )
+    parser.add_argument(
+        "--no-compile", dest="torch_compile", action="store_false",
+        help="Disable torch.compile",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="Build everything, print the plan, do not train"
     )
@@ -62,6 +73,14 @@ def main() -> None:
         cfg.precision = args.precision
     if args.max_steps is not None:
         cfg.max_steps = args.max_steps
+    if args.batch_size is not None:
+        cfg.batch_size = args.batch_size
+    if args.grad_accum is not None:
+        cfg.grad_accum = args.grad_accum
+    if args.num_workers is not None:
+        cfg.num_workers = args.num_workers
+    if args.torch_compile is not None:
+        cfg.torch_compile = args.torch_compile
 
     problems = cfg.validate()
     if problems:

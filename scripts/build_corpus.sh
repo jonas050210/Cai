@@ -18,7 +18,7 @@ export PATH="$ROOT/.venv/bin:$PATH"
 REPOS="core,wide"
 STOP_AFTER="doctor"
 VOCAB=16000
-WORKERS=12
+WORKERS=16
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -87,7 +87,7 @@ if step_done "$filtered"; then
 else
   stage "prepare (licence, near-dedup, syntax gate)"
   codeplan-prepare --input "$merged" --out-dir data/filtered \
-    --require-license --near-dedup --syntax-check --workers 16
+    --require-license --near-dedup --syntax-check --workers 20
 fi
 reached prepare
 

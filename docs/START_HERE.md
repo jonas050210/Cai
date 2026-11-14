@@ -107,8 +107,12 @@ codeplan-stats --input data/filtered/train.jsonl --target-tokens 983000000
 
 ```bash
 tmux new -s train
+bash scripts/train_fast.sh --steps 12000      # Durchsatz-Variante, ~4-5 h
+# oder klassisch:
 bash scripts/curriculum.sh --config configs/pretrain_100m_4060ti.json
 ```
+
+Mehr Knöpfe: `docs/PERFORMANCE.md`.
 
 - `Strg+B`, dann `D` = detach (Training läuft weiter), `tmux attach -t train` = zurück.
 - `Strg+C` = Step zu Ende rechnen, speichern, beenden.

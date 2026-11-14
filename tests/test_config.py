@@ -20,7 +20,8 @@ def test_config_roundtrip():
 
 def test_validate_accepts_repo_configs():
     for name in ["tiny_smoke", "tiny_sft", "pretrain_pilot", "pretrain_50m_4060ti",
-                 "sft_50m_4060ti"]:
+                 "sft_50m_4060ti", "pretrain_100m_4060ti", "pretrain_100m_fast",
+                 "sft_100m_4060ti"]:
         cfg = load_train_config(f"configs/{name}.json")
         assert cfg.validate() == [], f"{name}: {cfg.validate()}"
 
@@ -59,3 +60,52 @@ def test_configs_use_torch_compile_key():
         raw = json.loads(Path(f"configs/{name}.json").read_text())
         assert "torch_compile" in raw, name
         assert "compile" not in raw, name
+
+
+def test_cli_overrides_batch_size_and_compile(tmp_path, monkeypatch):
+    from codeplan import pretrain
+    from codeplan.config import load_train_config
+
+    base = load_train_config("configs/pretrain_100m_fast.json")
+    captured = {}
+
+    def fake_train_loop(model, loader, cfg, *args, **kwargs):
+        captured["batch_size"] = cfg.batch_size
+        captured["grad_accum"] = cfg.grad_accum
+        captured["compile"] = cfg.torch_compile
+        captured["num_workers"] = cfg.num_workers
+        return {"last_step": 0, "best_val": 0.0, "bad_evals": 0, "interrupted": False}
+
+    monkeypatch.setattr(pretrain, "train_loop", fake_train_loop)
+    # skip building real data: pretend everything exists
+    monkeypatch.setattr(pretrain.Path, "exists", lambda self: True)
+    monkeypatch.setattr(pretrain, "CodePlanTokenizer", type("T", (), {
+        "load": staticmethod(lambda path: type("Tok", (), {"vocab_size": 16000})()),
+    }))
+    monkeypatch.setattr(pretrain, "load_meta", lambda d: {"dtype": "uint16", "vocab_size": 16000})
+
+    class FakeDS:
+        def __init__(self, *a, **k):
+            pass
+
+        def __len__(self):
+            return 8
+
+    class FakeLoader:
+        def __init__(self, *a, **k):
+            pass
+
+    monkeypatch.setattr(pretrain, "MixturePackedDataset", FakeDS)
+    monkeypatch.setattr(pretrain, "PackedDataset", FakeDS)
+    monkeypatch.setattr(pretrain, "DataLoader", FakeLoader)
+    monkeypatch.setattr(pretrain, "save_json", lambda *a, **k: None)
+
+    monkeypatch.setattr("sys.argv", [
+        "codeplan-pretrain", "--config", "configs/pretrain_100m_fast.json",
+        "--batch-size", "1", "--grad-accum", "16", "--no-compile",
+        "--max-steps", "2000", "--device", "cpu", "--fresh",
+    ])
+    pretrain.main()
+    assert captured == {
+        "batch_size": 1, "grad_accum": 16, "compile": False, "num_workers": base.num_workers,
+    }
