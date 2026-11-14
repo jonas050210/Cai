@@ -42,6 +42,8 @@ ALLOWED_LICENSES = {
     "cc0-1.0",
     "unlicense",
     "mpl-2.0",
+    # Wikipedia text is CC BY-SA 4.0; attribution stays in the record's source
+    "cc-by-sa-4.0",
 }
 
 SKIP_DIR_PARTS = {

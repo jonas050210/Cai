@@ -48,16 +48,26 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat((-x2, x1), dim=-1)
 
 
+def apply_rope_one(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotate one tensor of shape (B, H, T, D); H may differ from the query heads."""
+    dtype = x.dtype
+    cos = cos[None, None, :, :]
+    sin = sin[None, None, :, :]
+    return (x.float() * cos + rotate_half(x.float()) * sin).to(dtype)
+
+
 def apply_rope(
     q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     # q/k: (B, H, T, D), cos/sin: (T, D)
-    cos = cos[None, None, :, :]
-    sin = sin[None, None, :, :]
-    q_dtype, k_dtype = q.dtype, k.dtype
-    q = (q.float() * cos + rotate_half(q.float()) * sin).to(q_dtype)
-    k = (k.float() * cos + rotate_half(k.float()) * sin).to(k_dtype)
-    return q, k
+    return apply_rope_one(q, cos, sin), apply_rope_one(k, cos, sin)
+
+
+def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """Expand K/V heads to the query head count (grouped-query attention)."""
+    if n_rep == 1:
+        return x
+    return x.repeat_interleave(n_rep, dim=1)
 
 
 class Attention(nn.Module):
@@ -65,11 +75,17 @@ class Attention(nn.Module):
         super().__init__()
         assert cfg.d_model % cfg.n_heads == 0
         self.n_heads = cfg.n_heads
+        self.n_kv_heads = cfg.n_kv_heads or cfg.n_heads
+        assert self.n_heads % self.n_kv_heads == 0, "n_heads must be a multiple of n_kv_heads"
+        self.n_rep = self.n_heads // self.n_kv_heads
         self.head_dim = cfg.d_model // cfg.n_heads
+        kv_dim = self.n_kv_heads * self.head_dim
         self.q_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
-        self.k_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
-        self.v_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
+        self.k_proj = nn.Linear(cfg.d_model, kv_dim, bias=False)
+        self.v_proj = nn.Linear(cfg.d_model, kv_dim, bias=False)
         self.o_proj = nn.Linear(cfg.d_model, cfg.d_model, bias=False)
+        self.q_norm = RMSNorm(self.head_dim) if cfg.qk_norm else None
+        self.k_norm = RMSNorm(self.head_dim) if cfg.qk_norm else None
         self.dropout = cfg.dropout
 
     def forward(
@@ -83,11 +99,17 @@ class Attention(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, Optional[tuple[torch.Tensor, torch.Tensor]]]:
         B, T, _ = x.shape
-        q = self.q_proj(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
+        q = self.q_proj(x).view(B, T, self.n_heads, self.head_dim)
+        k = self.k_proj(x).view(B, T, self.n_kv_heads, self.head_dim)
+        v = self.v_proj(x).view(B, T, self.n_kv_heads, self.head_dim)
 
-        q, k = apply_rope(q, k, cos, sin)
+        if self.q_norm is not None:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
+
+        q = apply_rope_one(q.transpose(1, 2), cos, sin)
+        k = apply_rope_one(k.transpose(1, 2), cos, sin)
+        v = v.transpose(1, 2)
 
         if past_kv is not None:
             past_k, past_v = past_kv
@@ -95,6 +117,8 @@ class Attention(nn.Module):
             v = torch.cat([past_v, v], dim=2)
 
         new_kv = (k, v) if use_cache else None
+        k = repeat_kv(k, self.n_rep)
+        v = repeat_kv(v, self.n_rep)
 
         if past_kv is None and T > 1:
             if attention_mask is None:
@@ -226,6 +250,11 @@ class CodePlanLM(nn.Module):
                 shift_labels.view(-1),
                 ignore_index=-100,
             )
+            if self.cfg.z_loss_coef > 0:
+                # Z-loss penalises a drifting log-partition function; it keeps
+                # bf16 training numerically calm without touching the logits.
+                lse = torch.logsumexp(shift_logits.float(), dim=-1)
+                loss = loss + self.cfg.z_loss_coef * (lse ** 2).mean()
 
         return logits, loss, new_kvs
 

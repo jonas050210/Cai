@@ -21,7 +21,7 @@ def test_config_roundtrip():
 def test_validate_accepts_repo_configs():
     for name in ["tiny_smoke", "tiny_sft", "pretrain_pilot", "pretrain_50m_4060ti",
                  "sft_50m_4060ti", "pretrain_100m_4060ti", "pretrain_100m_fast",
-                 "sft_100m_4060ti"]:
+                 "sft_100m_4060ti", "pretrain_bilingual_100m", "sft_bilingual_100m"]:
         cfg = load_train_config(f"configs/{name}.json")
         assert cfg.validate() == [], f"{name}: {cfg.validate()}"
 

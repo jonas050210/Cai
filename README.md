@@ -164,6 +164,24 @@ keyword               55   10.8%    0.897      2.45
 Bezeichner sind der Engpass — Operatoren und Keywords sitzen. Genau das, was
 „Perplexity 15" verdeckt.
 
+## Zweisprachig (EN-first, Deutsch als Helfer)
+
+`configs/pretrain_bilingual_100m.json` — 96,2M Parameter, **GQA** (4 KV-Heads),
+**QK-Norm**, **Z-Loss**, 24.576-Token-Vokabular auf Code + Doku + deutscher
+Wikipedia. Englisch bleibt die Hauptsprache, Deutsch dient zum Verstehen,
+Übersetzen und Korrigieren.
+
+```bash
+bash scripts/build_corpus.sh --bilingual      # + deutsche Wikipedia (CC BY-SA 4.0)
+bash scripts/train_fast.sh --config configs/pretrain_bilingual_100m.json --steps 12000
+```
+
+Deutsche Daten allein holen:
+
+```bash
+codeplan-german-wiki --out data/raw/german_wiki.jsonl --pages 3000
+```
+
 ## Schneller trainieren
 
 `configs/pretrain_100m_fast.json` (micro-batch 2, ohne Gradient-Checkpointing,

@@ -23,6 +23,14 @@ class ModelConfig:
     rope_theta: float = 10000.0
     tie_embeddings: bool = True
     gradient_checkpointing: bool = True
+    # Grouped-query attention: fewer K/V heads than Q heads shrinks the KV cache
+    # and speeds up generation. 0 means "same as n_heads" (classic MHA).
+    n_kv_heads: int = 0
+    # Per-head RMSNorm on q and k before RoPE. Stabilises long runs and allows
+    # a higher learning rate (used by modern small models, e.g. Gemma 2).
+    qk_norm: bool = False
+    # Auxiliary loss on logsumexp(logits): keeps the softmax from drifting.
+    z_loss_coef: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

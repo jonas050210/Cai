@@ -103,6 +103,16 @@ Zwischenstand ansehen:
 codeplan-stats --input data/filtered/train.jsonl --target-tokens 983000000
 ```
 
+## 4c. Zweisprachig (Englisch + Deutsch)
+
+```bash
+bash scripts/build_corpus.sh --bilingual --de-pages 3000
+bash scripts/train_fast.sh --config configs/pretrain_bilingual_100m.json --steps 12000
+```
+
+Zieht zusätzlich deutsche Wikipedia (CC BY-SA 4.0), baut ein 24.576-Token-
+Vokabular und nutzt die 96,2M-Config mit GQA, QK-Norm und Z-Loss.
+
 ## 5. Training
 
 ```bash

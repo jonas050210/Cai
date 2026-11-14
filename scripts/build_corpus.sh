@@ -19,6 +19,9 @@ REPOS="core,wide"
 STOP_AFTER="doctor"
 VOCAB=16000
 WORKERS=16
+BILINGUAL=0
+CONFIG="configs/pretrain_100m_4060ti.json"
+DE_PAGES=3000
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +30,8 @@ while [[ $# -gt 0 ]]; do
     --stop-after) STOP_AFTER="$2"; shift 2 ;;
     --vocab) VOCAB="$2"; shift 2 ;;
     --workers) WORKERS="$2"; shift 2 ;;
+    --bilingual) BILINGUAL=1; VOCAB="${VOCAB_BILINGUAL:-24576}"; shift ;;
+    --de-pages) DE_PAGES="$2"; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -40,6 +45,12 @@ fi
 step_done() { [[ -s "$1" ]]; }
 stage() { echo; echo "=== $* ==="; }
 reached() { [[ "$STOP_AFTER" == "$1" ]] && { echo; echo "Stopped after $1 (as requested)."; exit 0; } || true; }
+
+if (( BILINGUAL )); then
+  CONFIG="configs/pretrain_bilingual_100m.json"
+  VOCAB="${VOCAB_BILINGUAL:-24576}"
+  echo "Bilingual mode: German Wikipedia + vocab ${VOCAB} + ${CONFIG}"
+fi
 
 mkdir -p data/raw data/filtered artifacts
 
@@ -64,6 +75,15 @@ for list in "${LISTS[@]}"; do
   codeplan-collect --out "$raw" --repos-file "data/repos/${list}.txt" \
     --max-repo-mb 50 --workers "${WORKERS}" --sleep 0.2
 done
+# German text (CC BY-SA 4.0) is not a GitHub repository, so it has its own step.
+if (( BILINGUAL )); then
+  if step_done "data/raw/german_wiki.jsonl"; then
+    echo "skip german: data/raw/german_wiki.jsonl exists"
+  else
+    stage "german wikipedia (${DE_PAGES} articles)"
+    codeplan-german-wiki --out data/raw/german_wiki.jsonl --pages "$DE_PAGES"
+  fi
+fi
 reached collect
 
 # 2. merge ---------------------------------------------------------------
@@ -76,6 +96,7 @@ else
   for list in "${LISTS[@]}"; do
     [[ -f "data/raw/${list}.jsonl" ]] && cat "data/raw/${list}.jsonl" >> "$merged"
   done
+  [[ -f data/raw/german_wiki.jsonl ]] && cat data/raw/german_wiki.jsonl >> "$merged"
   echo "$(wc -l < "$merged") records"
 fi
 reached merge
@@ -116,13 +137,13 @@ reached pack
 
 # 7. sanity --------------------------------------------------------------
 stage "doctor"
-codeplan-doctor --config configs/pretrain_100m_4060ti.json --bench-steps 20
+codeplan-doctor --config "$CONFIG" --bench-steps 20
 
 cat <<'TXT'
 
 Corpus ready. Training:
 
   tmux new -s train
-  bash scripts/curriculum.sh --config configs/pretrain_100m_4060ti.json
+  bash scripts/train_fast.sh --config "$CONFIG" --steps 12000
   # Ctrl+B then D to detach; tmux attach -t train to come back
 TXT

@@ -40,6 +40,7 @@ codeplan-fertility = "codeplan.tokenizer_eval:main"
 codeplan-bench = "codeplan.bench:main"
 codeplan-export = "codeplan.export:main"
 codeplan-soup = "codeplan.soup:main"
+codeplan-german-wiki = "codeplan.german:main"
 codeplan-serve = "codeplan.server:main"
 
 [tool.setuptools.packages.find]
